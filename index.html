@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>10地点 GPS走行ログ AR</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
+</head>
+
+<body style="margin: 0; overflow: hidden;">
+
+    <a-scene
+        vr-mode-ui="enabled: false"
+        arjs="sourceType: webcam; debugUIEnabled: false;"
+        renderer="logarithmicDepthBuffer: true">
+
+        <a-camera
+            gps-camera="
+                rotation-reader;
+                simulateLatitude: 38.10148128126027; 
+                simulateLongitude: 140.0433090680094;
+            "
+        >
+        </a-camera>
+
+        <a-image
+            id="ar-point-1"
+            src="./Index/Picture/TasParkHotel.png"
+            gps-entity-place="latitude: 38.10148128126027; longitude: 140.0433090680094"
+            scale="40 40 40" 
+            visible="false"
+        ></a-image>
+        
+        <a-image
+            id="ar-point-2"
+            src="./Index/Picture/MichinoEkiNagai.png"
+            gps-entity-place="latitude: 38.108970970886325; longitude: 140.04382939078403"
+            scale="40 40 40"
+            visible="false"
+        ></a-image>
+        
+        <a-image
+            id="ar-point-3"
+            src="./Index/Picture/MNagaiShougakkou.png"
+            gps-entity-place="latitude: 38.107796313044474; longitude: 140.04269068239356"
+            scale="40 40 40"
+            visible="false"
+        ></a-image>
+
+        <a-image
+            id="ar-point-4"
+            src="./Index/Picture/Kozakurakan.png"
+            gps-entity-place="latitude: 38.110963329145335; longitude: 140.03632275489852"
+            scale="40 40 40"
+            visible="false"
+        ></a-image>
+        
+        <a-image
+            id="ar-point-5"
+            src="./Index/Picture/Marudaiougiya.png"
+            gps-entity-place="latitude: 38.11228246118919; longitude: 140.036198935986"
+            scale="40 40 40"
+            visible="false"
+        ></a-image>
+        
+        <a-image
+            id="ar-point-6"
+            src="./Index/Picture/Nagaisiyakusho.png"
+            gps-entity-place="latitude: 38.1063333593554; longitude: 140.033892868012"
+            scale="40 40 40"
+            visible="false"
+        ></a-image>
+
+        <a-image
+            id="ar-point-7"
+            src="./Index/Picture/NagaiKougyokoukou.png"
+            gps-entity-place="latitude: 38.114426209437404; longitude: 140.03013087985815"
+            scale="40 40 40"
+            visible="false"
+        ></a-image>
+
+        <a-image
+            id="ar-point-8"
+            src="./Index/Picture/Nagaikoukou.png"
+            gps-entity-place="latitude: 38.097283861825424; longitude: 140.0380452392042"
+            scale="40 44 40"
+            visible="false"
+        ></a-image>
+        
+        <a-image
+            id="ar-point-9"
+            src="./Index/Picture/MinamiNagai.png"
+            gps-entity-place="latitude: 38.09769549394771; longitude: 140.03458623775896"
+            scale="40 40 40"
+            visible="false"
+        ></a-image>
+        
+        <a-image
+            id="ar-point-10"
+            src="./Index/Picture/Kurunt.png"
+            gps-entity-place="latitude: 38.10491876278905; longitude: 140.03466346205656"
+            scale="40 40 40"
+            visible="false"
+        ></a-image>
+
+    </a-scene>
+
+
+    <script>
+        // ===================================
+        // ▼ 1. 設定項目 (土屋さんの方で要変更)
+        // ===================================
+
+        /**
+         * ★★★ 必須 ★★★
+         * GASをデプロイして取得した「Web アプリ URL」を貼り付け
+         */
+        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/....../exec"; // ★要変更
+
+        /**
+         * ログをGoogleスプレッドシートに送信する間隔（ミリ秒）
+         * 5000 (5秒) を推奨
+         */
+        const LOG_INTERVAL_MS = 5000; 
+
+        /**
+         * ARを表示するトリガーとなる距離（メートル）
+         * GPS誤差を考慮し、30m～50mを推奨
+         */
+        const TRIGGER_DISTANCE_M = 30; // 30m以内に近づいたら
+
+        /**
+         * ★★★ 必須 ★★★
+         * 10個のターゲットGPSポイントを定義
+         * (ご提示いただいた10地点のデータに更新済み)
+         */
+        const TARGET_POINTS = [
+          { name: 'TasParkHotel', lat: 38.10148128126027, lon: 140.0433090680094, id: 'ar-point-1' },
+          { name: 'MichinoEkiNagai', lat: 38.108970970886325, lon: 140.04382939078403, id: 'ar-point-2' },
+          { name: 'MNagaiShougakkou', lat: 38.107796313044474, lon: 140.04269068239356, id: 'ar-point-3' },
+          { name: 'Kozakurakan', lat: 38.110963329145335, lon: 140.03632275489852, id: 'ar-point-4' },
+          { name: 'Marudaiougiya', lat: 38.11228246118919, lon: 140.036198935986, id: 'ar-point-5' },
+          { name: 'Nagaisiyakusho', lat: 38.1063333593554, lon: 140.033892868012, id: 'ar-point-6' },
+          { name: 'NagaiKougyokoukou', lat: 38.114426209437404, lon: 140.03013087985815, id: 'ar-point-7' },
+          { name: 'Nagaikoukou', lat: 38.097283861825424, lon: 140.0380452392042, id: 'ar-point-8' },
+          { name: 'MinamiNagai', lat: 38.09769549394771, lon: 140.03458623775896, id: 'ar-point-9' },
+          { name: 'Kurunt', lat: 38.10491876278905, lon: 140.03466346205656, id: 'ar-point-10' }
+        ];
+
+        // ===================================
+        // ▼ 2. ユーティリティ関数 (変更なし)
+        // ===================================
+
+        function getUserId() {
+            let userId = localStorage.getItem('myWebArUserId');
+            if (!userId) {
+                userId = 'user_' + Date.now().toString(36) + Math.random().toString(36).substring(2);
+                localStorage.setItem('myWebArUserId', userId);
+            }
+            return userId;
+        }
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+          const R = 6371e3; // 地球の半径 (メートル)
+          const dLat = (lat2 - lat1) * Math.PI / 180;
+          const dLon = (lon2 - lon1) * Math.PI / 180;
+          const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          return R * c; // 距離 (メートル)
+        }
+
+        function sendDataToSheet(logType, lat, lon, pointName, distance) {
+          const userId = getUserId();
+          const formData = new FormData();
+          formData.append('userId', userId);
+          formData.append('logType', logType);
+          formData.append('latitude', lat);
+          formData.append('longitude', lon);
+          formData.append('pointName', pointName || '');
+          formData.append('distance', distance || '');
+
+          fetch(GAS_WEB_APP_URL, {
+            method: 'POST',
+            body: formData,
+            mode: 'no-cors'
+          })
+          .then(response => {
+            console.log('ログ送信:', logType, lat, lon, pointName);
+          })
+          .catch(error => {
+            console.error('シートへの送信エラー:', error);
+          });
+        }
+
+        // ===================================
+        // ▼ 3. メインのロガー (変更なし)
+        // ===================================
+
+        function masterLogger() {
+            const camera = document.querySelector('a-camera');
+            if (!camera) return;
+            const currentGps = camera.getAttribute('gps-camera');
+            if (!currentGps || !currentGps.latitude) {
+              console.log('GPS取得待機中...');
+              return; 
+            }
+            const { latitude, longitude } = currentGps;
+
+            let closestTarget = null;
+            let minDistance = Infinity;
+
+            for (const target of TARGET_POINTS) {
+                const distance = getDistance(latitude, longitude, target.lat, target.lon);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestTarget = target;
+                }
+            }
+            if (!closestTarget) return; 
+
+            if (minDistance <= TRIGGER_DISTANCE_M) {
+                sendDataToSheet('AR_ACTIVE', latitude, longitude, closestTarget.name, minDistance);
+                TARGET_POINTS.forEach(target => {
+                    const el = document.querySelector('#' + target.id);
+                    if (el) {
+                        el.setAttribute('visible', target.id === closestTarget.id);
+                    }
+                });
+            } else {
+                sendDataToSheet('DRIVING', latitude, longitude, null, null);
+                TARGET_POINTS.forEach(target => {
+                    const el = document.querySelector('#' + target.id);
+                    if (el) {
+                        el.setAttribute('visible', false);
+                    }
+                });
+            }
+        }
+
+        // ===================================
+        // ▼ 4. ロガーの起動 (変更なし)
+        // ===================================
+
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                console.log('走行ログの記録を開始します (間隔: ' + LOG_INTERVAL_MS + 'ms)');
+                setInterval(masterLogger, LOG_INTERVAL_MS);
+            }, 3000); 
+        });
+
+    </script>
+</body>
+</html>
