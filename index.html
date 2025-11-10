@@ -1,63 +1,143 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8">
-  <title>GPS WebAR シンプル版</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8" />
+  <title>10地点 GPS走行ログ AR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- A-Frame 本体 -->
-  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <!-- ★A-Frameは1.2.0に下げる（AR.js 3.4系と相性がいい） -->
+  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
 
-  <!-- GPS対応の AR.js（aframe 版）-->
-  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+  <!-- ★AR.jsも安定版3.4.1を使う -->
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.1/aframe/build/aframe-ar.js"></script>
+
+  <!-- 開発用コンソール（なくてもOK） -->
+  <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+  <script>eruda.init();</script>
 </head>
-<body style="margin: 0; overflow: hidden">
+
+<body style="margin:0; overflow:hidden;">
+
   <!--
-    いちばんシンプルな AR.js シーン
-    ・sourceType: webcam でカメラON
-    ・debugUIEnabled: false で余計な UI を消す
+    arjs のところで "trackingMethod: best;" などを足すと
+    たまにiOSで起動画面が止まるので、一番シンプルにしてあります
   -->
   <a-scene
-    embedded
     vr-mode-ui="enabled: false"
+    embedded
     arjs="sourceType: webcam; debugUIEnabled: false;"
+    renderer="antialias: true; alpha: true"
   >
 
-    <!-- 実機のGPSをそのまま使うカメラ ※シミュレートしない -->
-    <a-camera gps-camera rotation-reader></a-camera>
+    <!-- ★まずは固定の赤い箱：これが見えれば描画OK -->
+    <a-box
+      id="test-box"
+      position="0 1.5 -3"
+      depth="1" height="1" width="1"
+      color="#FF0000"
+      material="opacity: 1; side: double;"
+    ></a-box>
 
-    <!-- ここに「位置が合ったら表示する画像」たちを置いておく -->
-    <!-- 最初は見えない状態にしておいて、gps-ar.js で visible を true にします -->
+    <!-- ★GPSカメラ（まずはシミュレーションで固定場所） -->
+    <a-camera
+      gps-camera="simulateLatitude: 38.10148128126027; simulateLongitude: 140.0433090680094;"
+      rotation-reader
+    ></a-camera>
 
+    <!-- ★本番で出したい画像たちはここに。最初は非表示のまま -->
     <a-image
       id="ar-point-1"
       src="./Index/Picture/TasParkHotel.png"
       gps-entity-place="latitude: 38.10148128126027; longitude: 140.0433090680094"
-      scale="20 20 20"
+      scale="40 40 40"
       visible="false"
+      material="side: double;"
     ></a-image>
 
     <a-image
       id="ar-point-2"
       src="./Index/Picture/MichinoEkiNagai.png"
       gps-entity-place="latitude: 38.108970970886325; longitude: 140.04382939078403"
-      scale="20 20 20"
+      scale="40 40 40"
       visible="false"
+      material="side: double;"
     ></a-image>
 
     <a-image
       id="ar-point-3"
       src="./Index/Picture/MNagaiShougakkou.png"
       gps-entity-place="latitude: 38.107796313044474; longitude: 140.04269068239356"
-      scale="20 20 20"
+      scale="40 40 40"
       visible="false"
+      material="side: double;"
     ></a-image>
 
-    <!-- 必要ならここに 4〜10 も同じ書き方で増やせます -->
+    <a-image
+      id="ar-point-4"
+      src="./Index/Picture/Kozakurakan.png"
+      gps-entity-place="latitude: 38.110963329145335; longitude: 140.03632275489852"
+      scale="40 40 40"
+      visible="false"
+      material="side: double;"
+    ></a-image>
+
+    <a-image
+      id="ar-point-5"
+      src="./Index/Picture/Marudaiougiya.png"
+      gps-entity-place="latitude: 38.11228246118919; longitude: 140.036198935986"
+      scale="40 40 40"
+      visible="false"
+      material="side: double;"
+    ></a-image>
+
+    <a-image
+      id="ar-point-6"
+      src="./Index/Picture/Nagaisiyakusho.png"
+      gps-entity-place="latitude: 38.1063333593554; longitude: 140.033892868012"
+      scale="40 40 40"
+      visible="false"
+      material="side: double;"
+    ></a-image>
+
+    <a-image
+      id="ar-point-7"
+      src="./Index/Picture/NagaiKougyokoukou.png"
+      gps-entity-place="latitude: 38.114426209437404; longitude: 140.03013087985815"
+      scale="40 40 40"
+      visible="false"
+      material="side: double;"
+    ></a-image>
+
+    <a-image
+      id="ar-point-8"
+      src="./Index/Picture/Nagaikoukou.png"
+      gps-entity-place="latitude: 38.097283861825424; longitude: 140.0380452392042"
+      scale="40 40 40"
+      visible="false"
+      material="side: double;"
+    ></a-image>
+
+    <a-image
+      id="ar-point-9"
+      src="./Index/Picture/MinamiNagai.png"
+      gps-entity-place="latitude: 38.09769549394771; longitude: 140.03458623775896"
+      scale="40 40 40"
+      visible="false"
+      material="side: double;"
+    ></a-image>
+
+    <a-image
+      id="ar-point-10"
+      src="./Index/Picture/Kurunt.png"
+      gps-entity-place="latitude: 38.104867027791485; longitude: 140.03472544854446"
+      scale="40 40 40"
+      visible="false"
+      material="side: double;"
+    ></a-image>
 
   </a-scene>
 
-  <!-- 自分のロジック -->
+  <!-- 位置イベント確認＋近づいたら表示にする -->
   <script src="./gps-ar.js"></script>
 </body>
 </html>
