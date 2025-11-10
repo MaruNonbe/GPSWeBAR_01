@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>GPSトリガーAR（走行ログ送信）</title>
+  <title>GPSトリガーAR（5秒ごとログ記録）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- A-Frame + AR.js -->
@@ -73,8 +73,6 @@ const PLACES = [
 ];
 
 const hud = document.getElementById('hud');
-let lastLat = null;  // 直近位置を保持（必要なら使う）
-let lastLon = null;
 
 /* ========= 3. 距離計算 ========= */
 function distanceMeter(lat1, lon1, lat2, lon2) {
@@ -88,7 +86,7 @@ function distanceMeter(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-/* ========= 4. iOS許可 ========= */
+/* ========= 4. iOSセンサー許可 ========= */
 async function requestIOSPermissions() {
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -101,7 +99,7 @@ async function requestIOSPermissions() {
   }
 }
 
-/* ========= 5. A-Frameエンティティ生成 ========= */
+/* ========= 5. A-Frame画像生成 ========= */
 function createPlaceEntities() {
   const scene = document.querySelector('a-scene');
   PLACES.forEach(place => {
@@ -114,13 +112,14 @@ function createPlaceEntities() {
     img.setAttribute('material', 'side: double;');
     img.setAttribute('visible', 'false');
     scene.appendChild(img);
-
-    // 入退場フラグを持たせる
     place._isInside = false;
   });
 }
 
-/* ========= 6. GPSウォッチ ========= */
+/* ========= 6. GPS監視＋定期送信 ========= */
+let lastPos = null;
+let lastSentAt = 0;
+
 function startGPSWatch() {
   if (!navigator.geolocation) {
     hud.textContent = 'このブラウザではGPSが利用できません';
@@ -132,50 +131,24 @@ function startGPSWatch() {
       const lat = pos.coords.latitude;
       const lon = pos.coords.longitude;
       const accuracy = pos.coords.accuracy;
+      lastPos = { lat, lon, accuracy };
 
-      lastLat = lat;
-      lastLon = lon;
+      // HUD表示
+      hud.textContent =
+        `📍 現在のGPS\nlat: ${lat.toFixed(6)}\nlon: ${lon.toFixed(6)}\n精度: ±${accuracy.toFixed(1)}m`;
 
-      // ★★ ここで「位置更新ごとに必ず記録」する ★★
-      sendLog({
-        place_id: 'current',
-        event: 'position',
-        lat: lat,
-        lon: lon
-      });
-
-      // HUDはシンプルに現在地だけ
-      let hudText =
-        `📍 現在のGPS\n` +
-        `lat: ${lat.toFixed(6)}\n` +
-        `lon: ${lon.toFixed(6)}\n` +
-        `精度: ±${accuracy.toFixed(1)}m\n\n`;
-
-      // 各地点の入退場も今まで通り判定
+      // 各地点との距離計算・表示制御
       PLACES.forEach(place => {
         const dist = distanceMeter(lat, lon, place.lat, place.lon);
         const entity = document.getElementById('place-' + place.id);
         const isNear = dist <= place.radius;
-
-        if (entity) {
-          entity.setAttribute('visible', isNear);
-        }
-
-        // 入った瞬間
-        if (!place._isInside && isNear) {
+        if (entity) entity.setAttribute('visible', isNear);
+        if (!place._isInside && isNear)
           sendLog({ place_id: place.id, event: 'enter', lat, lon });
-        }
-        // 出た瞬間
-        if (place._isInside && !isNear) {
+        if (place._isInside && !isNear)
           sendLog({ place_id: place.id, event: 'leave', lat, lon });
-        }
         place._isInside = isNear;
-
-        // HUDにも出すならここで追加
-        hudText += `地点: ${place.name} / 距離: ${dist.toFixed(1)}m (半径${place.radius}m)\n`;
       });
-
-      hud.textContent = hudText;
     },
     (err) => {
       hud.textContent = '位置情報が取得できません（' + err.message + '）';
@@ -183,6 +156,20 @@ function startGPSWatch() {
     },
     { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
   );
+
+  // ★ 一定間隔で強制ログ送信（5秒ごと）
+  setInterval(() => {
+    if (!lastPos) return;
+    const now = Date.now();
+    if (now - lastSentAt < 5000) return;
+    sendLog({
+      place_id: 'current',
+      event: 'position',
+      lat: lastPos.lat,
+      lon: lastPos.lon
+    });
+    lastSentAt = now;
+  }, 5000);
 }
 
 /* ========= 7. 初期化 ========= */
