@@ -1,92 +1,91 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <title>強制表示テスト</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8">
+  <title>GPS AR テスト</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
-  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js?v=12"></script>
-  <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-  <script>eruda.init();</script>
-</head>
+  <!-- ★A-Frame は 1.2.0 に固定 -->
+  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
 
-<body style="margin:0; overflow:hidden;">
+  <!-- ★AR.js も 3.4.7 に固定（location-based入り） -->
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.7/aframe/build/aframe-ar.js"></script>
 
-  <a-scene
-    embedded
-    vr-mode-ui="enabled: false"
-    renderer="antialias: true; alpha: true;"
-    arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false;"
-  >
-    <a-camera
-      id="cam"
-      gps-camera="simulateLatitude: 38.10148128126027; simulateLongitude: 140.0433090680094;"
-      rotation-reader
-    ></a-camera>
-  </a-scene>
-
-  <div id="motion-btn" style="
-    position: fixed;
-    top: 10px;
-    left: 10px;
-    z-index: 9999;
-    background: rgba(0,0,0,0.7);
-    color: #fff;
-    padding: 10px 14px;
-    border-radius: 6px;
-    font-size: 14px;
-  ">
-    モーションと画面の向きを許可
-  </div>
-
-  <script>
-    const motionBtn = document.getElementById('motion-btn');
-    motionBtn.addEventListener('click', async () => {
-      try {
-        if (typeof DeviceMotionEvent !== 'undefined' &&
-            typeof DeviceMotionEvent.requestPermission === 'function') {
-          console.log(await DeviceMotionEvent.requestPermission());
-        }
-        if (typeof DeviceOrientationEvent !== 'undefined' &&
-            typeof DeviceOrientationEvent.requestPermission === 'function') {
-          console.log(await DeviceOrientationEvent.requestPermission());
-        }
-      } catch (e) {
-        console.warn(e);
-      }
-      motionBtn.style.display = 'none';
-    });
-
-    function spawnBox() {
-      const cam = document.getElementById('cam');
-      if (!cam) return;
-      if (document.getElementById('spawn-box')) return;
-
-      const box = document.createElement('a-box');
-      box.setAttribute('id', 'spawn-box');
-      box.setAttribute('position', '0 0 -5');
-      box.setAttribute('scale', '2 2 2');
-      box.setAttribute('color', 'red');
-      box.setAttribute('material', 'opacity: 0.9; side: double;');
-      cam.appendChild(box);
-      console.log('赤い箱を強制的にカメラ前に追加しました');
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #motion-btn {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 9999;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
     }
+  </style>
+</head>
+<body>
 
-    window.addEventListener('load', () => {
-      const cam = document.getElementById('cam');
+<!-- iOS の「モーションと画面の向き」を取るボタン -->
+<div id="motion-btn">モーションと画面の向きを許可</div>
 
-      // GPSイベントが来たとき
-      cam.addEventListener('gps-camera-update-position', e => {
-        console.log('gps-camera-update-position:', e.detail.position);
-        spawnBox();
-      });
+<a-scene
+  vr-mode-ui="enabled: false"
+  embedded
+  renderer="antialias: true; alpha: true"
+  arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false;"
+>
+  <!-- ★実機GPSを使うなら gps-camera だけでOK -->
+  <!-- まずは固定位置でテストするなら simulate～ を付ける -->
+  <a-camera
+    gps-camera="simulateLatitude: 38.10148128126027; simulateLongitude: 140.0433090680094;"
+    rotation-reader
+  ></a-camera>
 
-      // 念のため、3秒後にも強制で出す
-      setTimeout(() => {
-        spawnBox();
-      }, 3000);
+  <!-- ★これが見えたら勝ち -->
+  <a-image
+    id="target1"
+    src="./Index/Picture/TasParkHotel.png"
+    gps-entity-place="latitude: 38.10148128126027; longitude: 140.0433090680094"
+    scale="40 40 40"
+    visible="true"
+  ></a-image>
+
+</a-scene>
+
+<script>
+  // iOS13+ 用のモーション許可
+  const btn = document.getElementById('motion-btn');
+  btn.addEventListener('click', async () => {
+    try {
+      if (typeof DeviceMotionEvent !== 'undefined' &&
+          typeof DeviceMotionEvent.requestPermission === 'function') {
+        const r1 = await DeviceMotionEvent.requestPermission();
+        console.log('DeviceMotion permission:', r1);
+      }
+      if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r2 = await DeviceOrientationEvent.requestPermission();
+        console.log('DeviceOrientation permission:', r2);
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+    btn.style.display = 'none';
+  });
+
+  // 位置イベントが来ているかも一応出す
+  window.addEventListener('load', () => {
+    const cam = document.querySelector('[gps-camera]');
+    if (!cam) return;
+    cam.addEventListener('gps-camera-update-position', e => {
+      console.log('gps pos:', e.detail.position);
     });
-  </script>
+  });
+</script>
+
 </body>
 </html>
