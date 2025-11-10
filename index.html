@@ -122,6 +122,12 @@
   </a-scene>
 
   <!-- 自作のJS -->
+<script>
+  window.addEventListener('gps-camera-update-position', (e) => {
+    console.log('位置イベント受信:', e.detail.position);
+  });
+</script>
+
   <script src="./gps-ar.js"></script>
 </body>
 </html>
