@@ -2,13 +2,14 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>GPSトリガーAR（AR.js 3.4.1対応）</title>
+  <title>GPSトリガーAR（最終安定版）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- A-Frame + AR.js -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.1/aframe/build/aframe-ar.js"></script>
 
+  <!-- デバッグ用（任意） -->
   <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
   <script>eruda.init();</script>
 
@@ -32,6 +33,7 @@
 </head>
 <body>
 
+  <!-- 現在のGPSを表示 -->
   <div id="hud">位置を取得中…</div>
 
   <a-scene
@@ -40,8 +42,10 @@
     arjs="sourceType: webcam; debugUIEnabled: false;"
     renderer="antialias: true; alpha: true"
   >
+    <!-- 実際のGPS位置に同期するカメラ -->
     <a-camera gps-camera rotation-reader></a-camera>
 
+    <!-- 距離が近づくと表示される画像 -->
     <a-image
       id="near-content"
       src="./Index/Picture/TasParkHotel.png"
@@ -52,6 +56,7 @@
       visible="false"
     ></a-image>
 
+    <!-- デバッグ確認用ボックス -->
     <a-box position="0 0 -2" depth="0.2" height="0.2" width="0.2" color="#00FFAA"></a-box>
   </a-scene>
 
@@ -61,7 +66,7 @@
   const hud = document.getElementById('hud');
   const nearContent = document.getElementById('near-content');
 
-  // 距離計算
+  // 距離計算（m）
   function distanceMeter(lat1, lon1, lat2, lon2) {
     const R = 6378137;
     const toRad = x => x * Math.PI / 180;
@@ -72,7 +77,8 @@
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   }
 
-  function startGPSWatch(cam) {
+  // GPS監視開始
+  function startGPSWatch() {
     if (!navigator.geolocation) {
       hud.textContent = 'このブラウザではGPSが利用できません';
       return;
@@ -86,14 +92,6 @@
         const lon = pos.coords.longitude;
         console.log('📍取得成功:', lat, lon);
 
-        // AR.jsのgps-cameraがreadyなら、位置情報をobject3Dに渡す
-        if (cam && cam.object3D) {
-          cam.setAttribute('gps-camera', {
-            simulateLatitude: lat,
-            simulateLongitude: lon
-          });
-        }
-
         const dist = distanceMeter(lat, lon, TARGET.lat, TARGET.lon);
 
         hud.textContent =
@@ -101,6 +99,7 @@
           `登録GPS:\nlat: ${TARGET.lat}\nlon: ${TARGET.lon}\n\n` +
           `距離: ${dist.toFixed(2)} m\n(${THRESHOLD_M}m以内で表示)`;
 
+        // 一定距離以内なら画像を表示
         nearContent.setAttribute('visible', dist <= THRESHOLD_M);
       },
       (err) => {
@@ -111,7 +110,7 @@
     );
   }
 
-  // --- iOSセンサー許可 ---
+  // iOSセンサー許可
   async function requestIOSPermissions() {
     if (typeof DeviceOrientationEvent !== 'undefined' &&
         typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -135,13 +134,11 @@
     }
   }
 
-  // --- 初期化 ---
+  // ページロード時
   window.addEventListener('load', async () => {
-    const cam = document.querySelector('[gps-camera]');
     await requestIOSPermissions();
-    startGPSWatch(cam);
+    startGPSWatch();
   });
   </script>
-
 </body>
 </html>
