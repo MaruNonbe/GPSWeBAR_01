@@ -31,25 +31,23 @@
       rotation-reader
     ></a-camera>
 
-    <!-- 絶対に見えるはずの固定画像（表示テスト用） -->
-<a-image
-  src="./Index/Picture/TasParkHotel.png"
-  position="0 1.5 -3"
-  width="2.5"
-  height="1"
-  material="side: double; transparent: false; opacity: 1.0;"
-></a-image>
+    <!-- ①常に見えるテスト用の固定画像（出るかどうか確認する用） -->
+    <a-image
+      src="./Index/Picture/TasParkHotel.png"
+      position="0 1.5 -3"
+      width="2.5"
+      height="1.5"
+      material="side: double; transparent: false; opacity: 1.0;"
+    ></a-image>
 
-
-    <!-- 以下GPSで出したい画像たち -->
-<a-image
-  src="./Index/Picture/TasParkHotel.png"
-  position="0 1.5 -3"
-  width="2.5"
-  height="1.5"
-  rotation="0 180 0"
-  material="side: double; transparent: false; opacity: 1.0;"
-></a-image>
+    <!-- ②ここからがGPSで出したい画像たち（最初は非表示） -->
+    <a-image
+      id="ar-point-1"
+      src="./Index/Picture/TasParkHotel.png"
+      gps-entity-place="latitude: 38.10148128126027; longitude: 140.0433090680094"
+      scale="40 40 40"
+      visible="false"
+    ></a-image>
 
     <a-image
       id="ar-point-2"
@@ -142,41 +140,10 @@
   </div>
 
   <script>
-    // 位置イベントが飛んでるか確認
-    window.addEventListener('load', () => {
-      const cam = document.querySelector('[gps-camera]');
-      if (!cam) {
-        console.warn('gps-camera が見つかりません');
-        return;
-      }
-      cam.addEventListener('gps-camera-update-position', e => {
-        console.log('位置イベント受信:', e.detail.position);
-      });
-    });
-
-    // iOS用：ユーザー操作で許可を取る
     const motionBtn = document.getElementById('motion-btn');
+
     motionBtn.addEventListener('click', async () => {
       try {
         if (typeof DeviceMotionEvent !== 'undefined' &&
             typeof DeviceMotionEvent.requestPermission === 'function') {
-          const r1 = await DeviceMotionEvent.requestPermission();
-          console.log('DeviceMotion permission:', r1);
-        }
-        if (typeof DeviceOrientationEvent !== 'undefined' &&
-            typeof DeviceOrientationEvent.requestPermission === 'function') {
-          const r2 = await DeviceOrientationEvent.requestPermission();
-          console.log('DeviceOrientation permission:', r2);
-        }
-      } catch (e) {
-        console.warn('motion permission error', e);
-      }
-      // 許可が終わったらボタン消す
-      motionBtn.style.display = 'none';
-    });
-  </script>
-
-  <!-- 本番ロジック（GPSの表示切り替え） -->
-  <script src="./gps-ar.js?v=9"></script>
-</body>
-</html>
+          const
