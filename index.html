@@ -1,16 +1,37 @@
 <!DOCTYPE html>
 <html lang="ja">
   <head>
-    <meta charset="utf-8">
-    <title>A-Frameテスト</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <title>AR.js カメラテスト</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+
+    <!-- A-Frame -->
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
+    <!-- AR.js（最新版GPS対応）-->
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
   </head>
-  <body style="margin:0; overflow:hidden;">
-    <a-scene>
-      <a-box color="red" position="0 1.5 -3"></a-box>
-      <a-sky color="#ECECEC"></a-sky>
-      <a-camera position="0 1.6 0"></a-camera>
+
+  <body style="margin: 0; overflow: hidden;">
+    <a-scene
+      vr-mode-ui="enabled: false"
+      embedded
+      renderer="antialias: true; alpha: true;"
+      arjs="sourceType: webcam; debugUIEnabled: false;"
+    >
+      <!-- カメラ -->
+      <a-camera gps-camera rotation-reader></a-camera>
+
+      <!-- これがカメラ映像上に見えれば成功 -->
+      <a-box
+        position="0 1.5 -3"
+        rotation="0 45 0"
+        depth="0.5"
+        height="0.5"
+        width="0.5"
+        color="red"
+        material="opacity: 0.9;"
+      ></a-box>
     </a-scene>
   </body>
 </html>
