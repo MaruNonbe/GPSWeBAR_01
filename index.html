@@ -86,20 +86,7 @@ function distanceMeter(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-/* ========= 4. iOSセンサー許可 ========= */
-async function requestIOSPermissions() {
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
-    try {
-      const response = await DeviceOrientationEvent.requestPermission();
-      if (response !== 'granted') {
-        alert('デバイスの向きセンサーの許可が必要です。');
-      }
-    } catch (e) { console.error(e); }
-  }
-}
-
-/* ========= 5. A-Frame画像生成 ========= */
+/* ========= 4. A-Frame画像生成 ========= */
 function createPlaceEntities() {
   const scene = document.querySelector('a-scene');
   PLACES.forEach(place => {
@@ -116,7 +103,7 @@ function createPlaceEntities() {
   });
 }
 
-/* ========= 6. GPS監視＋定期送信 ========= */
+/* ========= 5. GPS監視＋定期送信 ========= */
 let lastPos = null;
 let lastSentAt = 0;
 
@@ -172,12 +159,45 @@ function startGPSWatch() {
   }, 5000);
 }
 
-/* ========= 7. 初期化 ========= */
-window.addEventListener('load', async () => {
-  await requestIOSPermissions();
+/* ========= 6. 初期化 ========= */
+window.addEventListener('load', () => {
   createPlaceEntities();
   startGPSWatch();
 });
 </script>
+
+<!-- iPhone用: センサー許可ボタン -->
+<button id="sensorButton" style="
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: #007bff; color: white;
+  padding: 14px 26px; border: none;
+  border-radius: 8px; font-size: 18px;
+  z-index: 9999;">センサーを有効にする</button>
+
+<script>
+const sensorButton = document.getElementById('sensorButton');
+
+sensorButton.addEventListener('click', async () => {
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const state = await DeviceOrientationEvent.requestPermission();
+      if (state === 'granted') {
+        // 許可取れたらボタンを消す
+        sensorButton.remove();
+      } else {
+        alert('センサーアクセスが拒否されました');
+      }
+    } catch (e) {
+      alert('センサー許可リクエスト中にエラー: ' + e);
+    }
+  } else {
+    // AndroidやPCでは自動許可
+    sensorButton.remove();
+  }
+});
+</script>
+
 </body>
 </html>
