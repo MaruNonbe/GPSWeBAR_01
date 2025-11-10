@@ -138,5 +138,44 @@
 
   <!-- 本番ロジック -->
   <script src="./gps-ar.js?v=9"></script>
+<!-- iPhoneでモーション許可を出すためのボタン -->
+<div id="motion-btn" style="
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 9999;
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+">
+  ARを有効にする
+</div>
+
+<script>
+  // iOS用：ユーザー操作で許可を取る
+  const motionBtn = document.getElementById('motion-btn');
+  motionBtn.addEventListener('click', async () => {
+    try {
+      // iOS 13+ のときだけこの書き方が必要
+      if (typeof DeviceMotionEvent !== 'undefined' &&
+          typeof DeviceMotionEvent.requestPermission === 'function') {
+        const r1 = await DeviceMotionEvent.requestPermission();
+        console.log('DeviceMotion permission:', r1);
+      }
+      if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const r2 = await DeviceOrientationEvent.requestPermission();
+        console.log('DeviceOrientation permission:', r2);
+      }
+    } catch (e) {
+      console.warn('motion permission error', e);
+    }
+    // 許可が終わったらボタン消してよい
+    motionBtn.style.display = 'none';
+  });
+</script>
 </body>
 </html>
