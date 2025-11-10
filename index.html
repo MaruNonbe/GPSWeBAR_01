@@ -9,7 +9,7 @@
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.1/aframe/build/aframe-ar.js"></script>
 
-  <!-- デバッグコンソール（任意。不要なら消してください） -->
+  <!-- デバッグコンソール（任意） -->
   <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
   <script>eruda.init();</script>
 
@@ -33,7 +33,6 @@
 </head>
 <body>
 
-  <!-- 位置情報表示 -->
   <div id="hud">位置を取得中…</div>
 
   <a-scene
@@ -43,13 +42,10 @@
     renderer="antialias: true; alpha: true"
   >
 
-    <!-- ✅ 実機のGPSをそのまま使う -->
-    <a-camera
-      gps-camera
-      rotation-reader
-    ></a-camera>
+    <!-- 実機のGPSを使う -->
+    <a-camera gps-camera rotation-reader></a-camera>
 
-    <!-- 近づいたときに出す画像（最初は非表示） -->
+    <!-- 到達したときに出すコンテンツ -->
     <a-image
       id="near-content"
       src="./Index/Picture/TasParkHotel.png"
@@ -60,89 +56,78 @@
       visible="false"
     ></a-image>
 
-    <!-- 常に見えるデバッグ用の小さい箱 -->
+    <!-- デバッグ用の箱 -->
     <a-box position="0 0 -2" depth="0.2" height="0.2" width="0.2" color="#00FFAA"></a-box>
 
   </a-scene>
 
   <script>
-    // ★ここで「到達したいGPS」を指定
-    const TARGET = {
-      lat: 38.10148128126027,
-      lon: 140.0433090680094
-    };
-    const THRESHOLD_M = 10; // 何m以内で表示するか
+  const TARGET = { lat: 38.10148128126027, lon: 140.0433090680094 };
+  const THRESHOLD_M = 10;
 
-    const hud = document.getElementById('hud');
-    const nearContent = document.getElementById('near-content');
+  const hud = document.getElementById('hud');
+  const nearContent = document.getElementById('near-content');
 
-    // 距離をメートルで出す関数
-    function distanceMeter(lat1, lon1, lat2, lon2) {
-      function toRad(v){ return v * Math.PI / 180; }
-      const R = 6378137;
-      const dLat = toRad(lat2 - lat1);
-      const dLon = toRad(lon2 - lon1);
-      const a =
-        Math.sin(dLat/2) * Math.sin(dLat/2) +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-        Math.sin(dLon/2) * Math.sin(dLon/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      return R * c;
+  // 距離計算
+  function distanceMeter(lat1, lon1, lat2, lon2) {
+    const R = 6378137;
+    const toRad = x => x * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat/2)**2 +
+              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  function startGPSWatch(cam) {
+    if (!navigator.geolocation) {
+      hud.textContent = 'このブラウザではGPSが利用できません';
+      return;
     }
 
-    window.addEventListener('load', () => {
-      const cam = document.querySelector('[gps-camera]');
-      if (!cam) {
-        hud.textContent = 'gps-cameraが見つかりません';
-        return;
-      }
+    navigator.geolocation.watchPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
 
-      // AR.jsが位置を更新するたびに飛んでくる
-      cam.addEventListener('gps-camera-update-position', (e) => {
-        const cur = e.detail.position;
-        const curLat = cur.latitude;
-        const curLon = cur.longitude;
+        // AR.js にも反映（初期化済みかチェック）
+        if (cam && cam.components && cam.components["gps-camera"]) {
+          cam.components["gps-camera"].updatePosition({ latitude: lat, longitude: lon });
+        }
 
-        const dist = distanceMeter(curLat, curLon, TARGET.lat, TARGET.lon);
+        const dist = distanceMeter(lat, lon, TARGET.lat, TARGET.lon);
 
-        // HUD表示を更新
         hud.textContent =
-          '現在のGPS:\n' +
-          'lat: ' + curLat.toFixed(8) + '\n' +
-          'lon: ' + curLon.toFixed(8) + '\n' +
-          '\n登録GPS:\n' +
-          'lat: ' + TARGET.lat + '\n' +
-          'lon: ' + TARGET.lon + '\n' +
-          '\n距離: ' + dist.toFixed(2) + ' m' +
-          '\n( ' + THRESHOLD_M + ' m以内で表示 )';
+          `現在のGPS:\nlat: ${lat.toFixed(6)}\nlon: ${lon.toFixed(6)}\n\n` +
+          `登録GPS:\nlat: ${TARGET.lat}\nlon: ${TARGET.lon}\n\n` +
+          `距離: ${dist.toFixed(2)} m\n(${THRESHOLD_M}m以内で表示)`;
 
-        // 一定距離以内なら表示
-        if (dist <= THRESHOLD_M) {
-          nearContent.setAttribute('visible', true);
+        nearContent.setAttribute('visible', dist <= THRESHOLD_M);
+      },
+      (err) => {
+        console.warn('GPS取得エラー:', err);
+        hud.textContent = '位置情報が取得できません（' + err.message + '）';
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+    );
+  }
+
+  // ページ読み込み後に開始
+  window.addEventListener('load', () => {
+    const cam = document.querySelector('[gps-camera]');
+
+    if (navigator.permissions) {
+      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+        if (result.state === 'denied') {
+          alert('位置情報の利用がブロックされています。「設定 > Safari > 位置情報」で許可してください。');
         } else {
-          nearContent.setAttribute('visible', false);
+          startGPSWatch(cam);
         }
       });
-    });
-// 追加：SafariでGPSを強制的に有効化するリクエスト
-if (navigator.permissions) {
-  navigator.permissions.query({ name: 'geolocation' }).then((result) => {
-    if (result.state === 'denied') {
-      alert('位置情報の利用がブロックされています。「設定 > Safari > 位置情報」で許可してください。');
-    } else if (result.state === 'prompt') {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          console.log('位置情報を取得しました', pos.coords);
-        },
-        (err) => {
-          console.warn('位置情報の取得に失敗:', err);
-        },
-        { enableHighAccuracy: true }
-      );
+    } else {
+      startGPSWatch(cam);
     }
   });
-}
-
   </script>
 </body>
 </html>
