@@ -8,7 +8,7 @@
   <!-- A-Frame -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 
-  <!-- ★ここ！マーカー用じゃなくて通常のAR.js。キャッシュ破りつき -->
+  <!-- 通常の AR.js （GPS対応）＋キャッシュ破り -->
   <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js?v=9"></script>
 
   <!-- デバッグ用 -->
@@ -31,7 +31,7 @@
       rotation-reader
     ></a-camera>
 
-    <!-- 絶対に見えるはずの固定画像（これがまず出るかテスト） -->
+    <!-- 絶対に見えるはずの固定画像（表示テスト用） -->
     <a-image
       src="./Index/Picture/TasParkHotel.png"
       position="0 1.5 -3"
@@ -122,8 +122,24 @@
 
   </a-scene>
 
-  <!-- 位置イベントが飛んでるか確認 -->
+  <!-- iPhoneでモーション許可を出すためのボタン -->
+  <div id="motion-btn" style="
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 9999;
+    background: rgba(0,0,0,0.7);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+  ">
+    モーションと画面の向きを許可
+  </div>
+
   <script>
+    // 位置イベントが飛んでるか確認
     window.addEventListener('load', () => {
       const cam = document.querySelector('[gps-camera]');
       if (!cam) {
@@ -134,48 +150,30 @@
         console.log('位置イベント受信:', e.detail.position);
       });
     });
+
+    // iOS用：ユーザー操作で許可を取る
+    const motionBtn = document.getElementById('motion-btn');
+    motionBtn.addEventListener('click', async () => {
+      try {
+        if (typeof DeviceMotionEvent !== 'undefined' &&
+            typeof DeviceMotionEvent.requestPermission === 'function') {
+          const r1 = await DeviceMotionEvent.requestPermission();
+          console.log('DeviceMotion permission:', r1);
+        }
+        if (typeof DeviceOrientationEvent !== 'undefined' &&
+            typeof DeviceOrientationEvent.requestPermission === 'function') {
+          const r2 = await DeviceOrientationEvent.requestPermission();
+          console.log('DeviceOrientation permission:', r2);
+        }
+      } catch (e) {
+        console.warn('motion permission error', e);
+      }
+      // 許可が終わったらボタン消す
+      motionBtn.style.display = 'none';
+    });
   </script>
 
-  <!-- 本番ロジック -->
+  <!-- 本番ロジック（GPSの表示切り替え） -->
   <script src="./gps-ar.js?v=9"></script>
-<!-- iPhoneでモーション許可を出すためのボタン -->
-<div id="motion-btn" style="
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  z-index: 9999;
-  background: rgba(0,0,0,0.7);
-  color: #fff;
-  padding: 10px 14px;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-">
-  ARを有効にする
-</div>
-
-<script>
-  // iOS用：ユーザー操作で許可を取る
-  const motionBtn = document.getElementById('motion-btn');
-  motionBtn.addEventListener('click', async () => {
-    try {
-      // iOS 13+ のときだけこの書き方が必要
-      if (typeof DeviceMotionEvent !== 'undefined' &&
-          typeof DeviceMotionEvent.requestPermission === 'function') {
-        const r1 = await DeviceMotionEvent.requestPermission();
-        console.log('DeviceMotion permission:', r1);
-      }
-      if (typeof DeviceOrientationEvent !== 'undefined' &&
-          typeof DeviceOrientationEvent.requestPermission === 'function') {
-        const r2 = await DeviceOrientationEvent.requestPermission();
-        console.log('DeviceOrientation permission:', r2);
-      }
-    } catch (e) {
-      console.warn('motion permission error', e);
-    }
-    // 許可が終わったらボタン消してよい
-    motionBtn.style.display = 'none';
-  });
-</script>
 </body>
 </html>
