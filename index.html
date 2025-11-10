@@ -2,14 +2,14 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>GPSトリガーAR（複数地点＋ログ送信）</title>
+  <title>GPSトリガーAR（走行ログ送信）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- A-Frame + AR.js -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.1/aframe/build/aframe-ar.js"></script>
 
-  <!-- デバッグ用（任意） -->
+  <!-- デバッグ（任意） -->
   <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
   <script>eruda.init();</script>
 
@@ -33,7 +33,6 @@
 </head>
 <body>
 
-  <!-- GPSデバッグ表示 -->
   <div id="hud">位置を取得中…</div>
 
   <a-scene
@@ -42,151 +41,156 @@
     arjs="sourceType: webcam; debugUIEnabled: false;"
     renderer="antialias: true; alpha: true"
   >
-    <!-- 実機GPSカメラ -->
     <a-camera gps-camera rotation-reader></a-camera>
-
-    <!-- デバッグ用の箱 -->
     <a-box position="0 0 -2" depth="0.2" height="0.2" width="0.2" color="#00FFAA"></a-box>
   </a-scene>
 
-  <script>
-  // ======== ここがGoogleスプレッドシートの受け口 ========
-  const LOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw_uhqYjG25qdhdrZ6zCZgjTCKPVypqmTcgKenXBtt4LSBCaoARHYSAYxtMEHijY1rSdA/exec';
+<script>
+/* ========= 1. GASのURL ========= */
+const LOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw_uhqYjG25qdhdrZ6zCZgjTCKPVypqmTcgKenXBtt4LSBCaoARHYSAYxtMEHijY1rSdA/exec';
 
-  function sendLog(payload) {
-    fetch(LOG_ENDPOINT, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }).catch(err => {
-      console.warn('ログ送信失敗:', err);
-    });
-  }
-  // ===================================================
+function sendLog(payload) {
+  fetch(LOG_ENDPOINT, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).catch(err => console.warn('ログ送信失敗:', err));
+}
 
-  // ① 登録する地点たち
-  const PLACES = [
-    { id: 'tas-park',         name: 'TasParkHotel',       lat: 38.10148128126027, lon: 140.0433090680094, radius: 20, image: './Index/Picture/TasParkHotel.png' },
-    { id: 'MichinoEkiNagai',  name: 'MichinoEkiNagai',    lat: 38.108970970886325, lon: 140.04382939078403, radius: 20, image: './Index/Picture/MichinoEkiNagai.png' },
-    { id: 'MNagaiShougakkou', name: 'MNagaiShougakkou',   lat: 38.107796313044474, lon: 140.04269068239356, radius: 15, image: './Index/Picture/MNagaiShougakkou.png' },
-    { id: 'Kozakurakan',      name: 'Kozakurakan',        lat: 38.110963329145335, lon: 140.03632275489852, radius: 15, image: './Index/Picture/Kozakurakan.png' },
-    { id: 'Marudaiougiya',    name: 'Marudaiougiya',      lat: 38.11228246118919,  lon: 140.036198935986,   radius: 15, image: './Index/Picture/Marudaiougiya.png' },
-    { id: 'Nagaisiyakusho',   name: 'Nagaisiyakusho',     lat: 38.1063333593554,   lon: 140.033892868012,   radius: 15, image: './Index/Picture/Nagaisiyakusho.png' },
-    { id: 'NagaiKougyokoukou',name: 'NagaiKougyokoukou',  lat: 38.114426209437404, lon: 140.03013087985815, radius: 15, image: './Index/Picture/NagaiKougyokoukou.png' },
-    { id: 'Nagaikoukou',      name: 'Nagaikoukou',        lat: 38.097283861825424, lon: 140.0380452392042,  radius: 15, image: './Index/Picture/Nagaikoukou.png' },
-    { id: 'MinamiNagai',      name: 'MinamiNagai',        lat: 38.09769549394771,  lon: 140.03458623775896, radius: 15, image: './Index/Picture/MinamiNagai.png' },
-    { id: 'Kurunt',           name: 'Kurunt',             lat: 38.10491876278905,  lon: 140.03466346205656, radius: 15, image: './Index/Picture/Kurunt.png' }
-  ];
+/* ========= 2. 登録地点 ========= */
+const PLACES = [
+  { id: 'tas-park',         name: 'TasParkHotel',       lat: 38.10148128126027, lon: 140.0433090680094, radius: 20, image: './Index/Picture/TasParkHotel.png' },
+  { id: 'MichinoEkiNagai',  name: 'MichinoEkiNagai',    lat: 38.108970970886325, lon: 140.04382939078403, radius: 20, image: './Index/Picture/MichinoEkiNagai.png' },
+  { id: 'MNagaiShougakkou', name: 'MNagaiShougakkou',   lat: 38.107796313044474, lon: 140.04269068239356, radius: 15, image: './Index/Picture/MNagaiShougakkou.png' },
+  { id: 'Kozakurakan',      name: 'Kozakurakan',        lat: 38.110963329145335, lon: 140.03632275489852, radius: 15, image: './Index/Picture/Kozakurakan.png' },
+  { id: 'Marudaiougiya',    name: 'Marudaiougiya',      lat: 38.11228246118919,  lon: 140.036198935986,   radius: 15, image: './Index/Picture/Marudaiougiya.png' },
+  { id: 'Nagaisiyakusho',   name: 'Nagaisiyakusho',     lat: 38.1063333593554,   lon: 140.033892868012,   radius: 15, image: './Index/Picture/Nagaisiyakusho.png' },
+  { id: 'NagaiKougyokoukou',name: 'NagaiKougyokoukou',  lat: 38.114426209437404, lon: 140.03013087985815, radius: 15, image: './Index/Picture/NagaiKougyokoukou.png' },
+  { id: 'Nagaikoukou',      name: 'Nagaikoukou',        lat: 38.097283861825424, lon: 140.0380452392042,  radius: 15, image: './Index/Picture/Nagaikoukou.png' },
+  { id: 'MinamiNagai',      name: 'MinamiNagai',        lat: 38.09769549394771,  lon: 140.03458623775896, radius: 15, image: './Index/Picture/MinamiNagai.png' },
+  { id: 'Kurunt',           name: 'Kurunt',             lat: 38.10491876278905,  lon: 140.03466346205656, radius: 15, image: './Index/Picture/Kurunt.png' }
+];
 
-  const hud = document.getElementById('hud');
+const hud = document.getElementById('hud');
+let lastLat = null;  // 直近位置を保持（必要なら使う）
+let lastLon = null;
 
-  // 距離計算
-  function distanceMeter(lat1, lon1, lat2, lon2) {
-    const R = 6378137;
-    const toRad = x => x * Math.PI / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a = Math.sin(dLat/2)**2 +
-              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  }
+/* ========= 3. 距離計算 ========= */
+function distanceMeter(lat1, lon1, lat2, lon2) {
+  const R = 6378137;
+  const toRad = x => x * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
 
-  // iOSセンサー許可
-  async function requestIOSPermissions() {
-    if (typeof DeviceOrientationEvent !== 'undefined' &&
-        typeof DeviceOrientationEvent.requestPermission === 'function') {
-      try {
-        const response = await DeviceOrientationEvent.requestPermission();
-        if (response !== 'granted') {
-          alert('デバイスの向きセンサーの許可が必要です。再読み込みして許可してください。');
-        }
-      } catch (e) {
-        console.error(e);
+/* ========= 4. iOS許可 ========= */
+async function requestIOSPermissions() {
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const response = await DeviceOrientationEvent.requestPermission();
+      if (response !== 'granted') {
+        alert('デバイスの向きセンサーの許可が必要です。');
       }
-    }
-    if (navigator.permissions) {
-      const result = await navigator.permissions.query({ name: 'geolocation' });
-      if (result.state === 'denied') {
-        alert('位置情報がブロックされています。「設定 > Safari > 位置情報」で許可してください。');
-      }
-    }
+    } catch (e) { console.error(e); }
   }
+}
 
-  // ② 地点ごとの <a-image> を作る
-  function createPlaceEntities() {
-    const scene = document.querySelector('a-scene');
-    PLACES.forEach(place => {
-      const img = document.createElement('a-image');
-      img.setAttribute('id', 'place-' + place.id);
-      img.setAttribute('src', place.image);
-      img.setAttribute('position', '0 1.5 -3');
-      img.setAttribute('width', '2.5');
-      img.setAttribute('height', '1.2');
-      img.setAttribute('material', 'side: double;');
-      img.setAttribute('visible', 'false');
-      scene.appendChild(img);
-      // 入退場検知用フラグ
-      place._isInside = false;
-    });
-  }
+/* ========= 5. A-Frameエンティティ生成 ========= */
+function createPlaceEntities() {
+  const scene = document.querySelector('a-scene');
+  PLACES.forEach(place => {
+    const img = document.createElement('a-image');
+    img.setAttribute('id', 'place-' + place.id);
+    img.setAttribute('src', place.image);
+    img.setAttribute('position', '0 1.5 -3');
+    img.setAttribute('width', '2.5');
+    img.setAttribute('height', '1.2');
+    img.setAttribute('material', 'side: double;');
+    img.setAttribute('visible', 'false');
+    scene.appendChild(img);
 
-  // ③ GPSの監視
-  function startGPSWatch() {
-    if (!navigator.geolocation) {
-      hud.textContent = 'このブラウザではGPSが利用できません';
-      return;
-    }
-
-    navigator.geolocation.watchPosition(
-      (pos) => {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-
-        let hudText = `現在のGPS:\nlat: ${lat.toFixed(6)}\nlon: ${lon.toFixed(6)}\n\n`;
-
-        PLACES.forEach(place => {
-          const dist = distanceMeter(lat, lon, place.lat, place.lon);
-          const entity = document.getElementById('place-' + place.id);
-          const isNear = dist <= place.radius;
-
-          // 表示/非表示
-          if (entity) {
-            entity.setAttribute('visible', isNear);
-          }
-
-          // 入った瞬間
-          if (!place._isInside && isNear) {
-            sendLog({ place_id: place.id, event: 'enter', lat, lon });
-          }
-          // 出た瞬間
-          if (place._isInside && !isNear) {
-            sendLog({ place_id: place.id, event: 'leave', lat, lon });
-          }
-          place._isInside = isNear;
-
-          // HUDにも情報を出す
-          hudText += `地点: ${place.name}\n登録: ${place.lat}, ${place.lon}\n距離: ${dist.toFixed(2)} m (半径${place.radius}m)\n\n`;
-        });
-
-        hudText += '※半径内に入った地点の画像だけが表示されます';
-        hud.textContent = hudText;
-      },
-      (err) => {
-        console.warn('GPS取得エラー:', err);
-        hud.textContent = '位置情報が取得できません（' + err.message + '）';
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
-    );
-  }
-
-  // ④ 初期化
-  window.addEventListener('load', async () => {
-    await requestIOSPermissions();
-    createPlaceEntities();
-    startGPSWatch();
+    // 入退場フラグを持たせる
+    place._isInside = false;
   });
-  </script>
+}
+
+/* ========= 6. GPSウォッチ ========= */
+function startGPSWatch() {
+  if (!navigator.geolocation) {
+    hud.textContent = 'このブラウザではGPSが利用できません';
+    return;
+  }
+
+  navigator.geolocation.watchPosition(
+    (pos) => {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      const accuracy = pos.coords.accuracy;
+
+      lastLat = lat;
+      lastLon = lon;
+
+      // ★★ ここで「位置更新ごとに必ず記録」する ★★
+      sendLog({
+        place_id: 'current',
+        event: 'position',
+        lat: lat,
+        lon: lon
+      });
+
+      // HUDはシンプルに現在地だけ
+      let hudText =
+        `📍 現在のGPS\n` +
+        `lat: ${lat.toFixed(6)}\n` +
+        `lon: ${lon.toFixed(6)}\n` +
+        `精度: ±${accuracy.toFixed(1)}m\n\n`;
+
+      // 各地点の入退場も今まで通り判定
+      PLACES.forEach(place => {
+        const dist = distanceMeter(lat, lon, place.lat, place.lon);
+        const entity = document.getElementById('place-' + place.id);
+        const isNear = dist <= place.radius;
+
+        if (entity) {
+          entity.setAttribute('visible', isNear);
+        }
+
+        // 入った瞬間
+        if (!place._isInside && isNear) {
+          sendLog({ place_id: place.id, event: 'enter', lat, lon });
+        }
+        // 出た瞬間
+        if (place._isInside && !isNear) {
+          sendLog({ place_id: place.id, event: 'leave', lat, lon });
+        }
+        place._isInside = isNear;
+
+        // HUDにも出すならここで追加
+        hudText += `地点: ${place.name} / 距離: ${dist.toFixed(1)}m (半径${place.radius}m)\n`;
+      });
+
+      hud.textContent = hudText;
+    },
+    (err) => {
+      hud.textContent = '位置情報が取得できません（' + err.message + '）';
+      console.warn('GPS取得エラー:', err);
+    },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+  );
+}
+
+/* ========= 7. 初期化 ========= */
+window.addEventListener('load', async () => {
+  await requestIOSPermissions();
+  createPlaceEntities();
+  startGPSWatch();
+});
+</script>
 </body>
 </html>
