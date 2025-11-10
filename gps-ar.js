@@ -9,7 +9,7 @@ const GAS_WEB_APP_URL = "https://script.google.com/macros/s/......../exec";
 const LOG_INTERVAL_MS = 5000;
 
 // 反応する距離（m）
-const TRIGGER_DISTANCE_M = 30;
+const TRIGGER_DISTANCE_M = 100;
 
 // 10地点
 const TARGET_POINTS = [
