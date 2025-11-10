@@ -2,19 +2,15 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>GPS AR カメラ前テスト</title>
+  <title>強制表示テスト</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- A-Frame -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-
-  <!-- AR.js（GPS入りのやつ）-->
-  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js?v=11"></script>
-
-  <!-- コンソール -->
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js?v=12"></script>
   <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
   <script>eruda.init();</script>
 </head>
+
 <body style="margin:0; overflow:hidden;">
 
   <a-scene
@@ -23,17 +19,13 @@
     renderer="antialias: true; alpha: true;"
     arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false;"
   >
-    <!-- 室内テスト用に位置を固定 -->
     <a-camera
       id="cam"
       gps-camera="simulateLatitude: 38.10148128126027; simulateLongitude: 140.0433090680094;"
       rotation-reader
     ></a-camera>
-
-    <!-- シーンに何も置かない。あとで JS で足す -->
   </a-scene>
 
-  <!-- iPhoneのモーション許可ボタン -->
   <div id="motion-btn" style="
     position: fixed;
     top: 10px;
@@ -49,52 +41,51 @@
   </div>
 
   <script>
-    // 1) モーション許可をとる
     const motionBtn = document.getElementById('motion-btn');
     motionBtn.addEventListener('click', async () => {
       try {
         if (typeof DeviceMotionEvent !== 'undefined' &&
             typeof DeviceMotionEvent.requestPermission === 'function') {
-          console.log('ask motion');
           console.log(await DeviceMotionEvent.requestPermission());
         }
         if (typeof DeviceOrientationEvent !== 'undefined' &&
             typeof DeviceOrientationEvent.requestPermission === 'function') {
-          console.log('ask orientation');
           console.log(await DeviceOrientationEvent.requestPermission());
         }
       } catch (e) {
-        console.warn('motion perm error', e);
+        console.warn(e);
       }
       motionBtn.style.display = 'none';
     });
 
-    // 2) GPSカメラから位置が来たら、その瞬間に「カメラの前に」赤い箱をくっつける
+    function spawnBox() {
+      const cam = document.getElementById('cam');
+      if (!cam) return;
+      if (document.getElementById('spawn-box')) return;
+
+      const box = document.createElement('a-box');
+      box.setAttribute('id', 'spawn-box');
+      box.setAttribute('position', '0 0 -5');
+      box.setAttribute('scale', '2 2 2');
+      box.setAttribute('color', 'red');
+      box.setAttribute('material', 'opacity: 0.9; side: double;');
+      cam.appendChild(box);
+      console.log('赤い箱を強制的にカメラ前に追加しました');
+    }
+
     window.addEventListener('load', () => {
       const cam = document.getElementById('cam');
-      if (!cam) {
-        console.warn('camera not found');
-        return;
-      }
 
+      // GPSイベントが来たとき
       cam.addEventListener('gps-camera-update-position', e => {
         console.log('gps-camera-update-position:', e.detail.position);
-
-        // すでに追加済みなら何もしない
-        if (document.getElementById('spawn-box')) return;
-
-        // カメラの子として作る
-        const box = document.createElement('a-box');
-        box.setAttribute('id', 'spawn-box');
-        // カメラの「まっすぐ前」5m
-        box.setAttribute('position', '0 0 -5');
-        box.setAttribute('scale', '2 2 2');
-        box.setAttribute('color', 'red');
-        box.setAttribute('material', 'opacity: 0.9; side: double;');
-
-        cam.appendChild(box);
-        console.log('赤い箱をカメラの前に追加しました');
+        spawnBox();
       });
+
+      // 念のため、3秒後にも強制で出す
+      setTimeout(() => {
+        spawnBox();
+      }, 3000);
     });
   </script>
 </body>
