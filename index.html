@@ -8,10 +8,10 @@
   <!-- A-Frame -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 
-  <!-- ←ここをNFT版じゃなくて通常版にする -->
-  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+  <!-- ★ここ！マーカー用じゃなくて通常のAR.js。キャッシュ破りつき -->
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js?v=9"></script>
 
-  <!-- デバッグ用コンソール -->
+  <!-- デバッグ用 -->
   <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
   <script>eruda.init();</script>
 </head>
@@ -25,14 +25,13 @@
     renderer="antialias: true; alpha: true;"
   >
 
-    <!-- 家の中テスト用。実機の場所にしたいときはコメント外す -->
-    <!-- <a-camera gps-camera rotation-reader></a-camera> -->
+    <!-- 家の中テスト用のGPSカメラ -->
     <a-camera
       gps-camera="simulateLatitude: 38.10148128126027; simulateLongitude: 140.0433090680094;"
       rotation-reader
     ></a-camera>
 
-    <!-- テスト：絶対に見えるはずの固定画像（これが見えたら描画OK） -->
+    <!-- 絶対に見えるはずの固定画像（これがまず出るかテスト） -->
     <a-image
       src="./Index/Picture/TasParkHotel.png"
       position="0 1.5 -3"
@@ -40,7 +39,7 @@
       height="1"
     ></a-image>
 
-    <!-- ここからがGPSで出したい画像たち。最初は非表示 -->
+    <!-- 以下GPSで出したい画像たち -->
     <a-image
       id="ar-point-1"
       src="./Index/Picture/TasParkHotel.png"
@@ -123,7 +122,7 @@
 
   </a-scene>
 
-  <!-- 位置イベントが本当に飛んでいるか確認する用 -->
+  <!-- 位置イベントが飛んでるか確認 -->
   <script>
     window.addEventListener('load', () => {
       const cam = document.querySelector('[gps-camera]');
@@ -138,6 +137,6 @@
   </script>
 
   <!-- 本番ロジック -->
-  <script src="./gps-ar.js"></script>
+  <script src="./gps-ar.js?v=9"></script>
 </body>
 </html>
