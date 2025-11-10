@@ -11,16 +11,13 @@
   <!-- AR.js (A-Frame版) -->
   <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
 
-  <!-- デバッグ用コンソール（スマホで開発時に便利） -->
+  <!-- デバッグ用コンソール -->
   <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-  <script>
-    eruda.init();
-  </script>
+  <script>eruda.init();</script>
 </head>
 
 <body style="margin: 0; overflow: hidden;">
 
-  <!-- ARシーン -->
   <a-scene
     vr-mode-ui="enabled: false"
     embedded
@@ -28,17 +25,13 @@
     renderer="logarithmicDepthBuffer: true; preserveDrawingBuffer: true"
   >
 
-    <!-- 位置・方位を取るカメラ ※ここが重要 -->
-    <!-- 実機のGPSを使うとき -->
+    <!-- 家の中テスト用。実機GPSでやるときは下の1行に戻す -->
     <!-- <a-camera gps-camera rotation-reader></a-camera> -->
-
-    <!-- 家の中で位置を固定してテストしたいときは下を使う -->
     <a-camera
       gps-camera="simulateLatitude: 38.10148128126027; simulateLongitude: 140.0433090680094;"
       rotation-reader
     ></a-camera>
 
-    <!-- 10個のAR画像。最初は非表示にしておく -->
     <a-image
       id="ar-point-1"
       src="./Index/Picture/TasParkHotel.png"
@@ -121,13 +114,21 @@
 
   </a-scene>
 
-  <!-- 自作のJS -->
-<script>
-  window.addEventListener('gps-camera-update-position', (e) => {
-    console.log('位置イベント受信:', e.detail.position);
-  });
-</script>
+  <!-- 位置イベントが本当に飛んでいるかだけ先に確認する用 -->
+  <script>
+    window.addEventListener('load', () => {
+      const cam = document.querySelector('[gps-camera]');
+      if (!cam) {
+        console.warn('gps-camera が見つかりません');
+        return;
+      }
+      cam.addEventListener('gps-camera-update-position', e => {
+        console.log('位置イベント受信:', e.detail.position);
+      });
+    });
+  </script>
 
+  <!-- 本番ロジック -->
   <script src="./gps-ar.js"></script>
 </body>
 </html>
