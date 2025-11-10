@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>GPSトリガーAR（複数地点対応）</title>
+  <title>GPSトリガーAR（複数地点対応＋ログ連携）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- A-Frame + AR.js -->
@@ -50,102 +50,44 @@
   </a-scene>
 
   <script>
+  // === Googleスプレッドシート ログ送信設定 ===
+  const LOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbxzWVSDFhmEXYROLpHfEBEzCoZFjpDQ9zV_7OzSU11ll3rvN_IIsiIxi_RLsfscuLsYrw/exec';
+
+  // データを送信する関数（非同期）
+  function sendLog(payload) {
+    fetch(LOG_ENDPOINT, {
+      method: 'POST',
+      mode: 'no-cors', // GASへの送信はno-corsでOK
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(err => {
+      console.warn('ログ送信失敗:', err);
+    });
+  }
+
   // ① 登録する地点たち
   const PLACES = [
-    {
-      id: 'tas-park',
-      name: 'TasParkHotel',
-      lat: 38.10148128126027,
-      lon: 140.0433090680094,
-      radius: 20,
-      image: './Index/Picture/TasParkHotel.png'
-    },
-    {
-      id: 'MichinoEkiNagai',
-      name: 'MichinoEkiNagai',
-      lat: 38.108970970886325,
-      lon: 140.04382939078403,
-      radius: 20,
-      image: './Index/Picture/MichinoEkiNagai.png'
-    },
-    {
-      id: 'MNagaiShougakkou',
-      name: 'MNagaiShougakkou',
-      lat: 38.107796313044474,
-      lon: 140.04269068239356,
-      radius: 15,
-      image: './Index/Picture/MNagaiShougakkou.png'
-    },
-    {
-      id: 'Kozakurakan',
-      name: 'Kozakurakan',
-      lat: 38.110963329145335,
-      lon: 140.03632275489852,
-      radius: 15,
-      image: './Index/Picture/Kozakurakan.png'
-    },
-    {
-      id: 'Marudaiougiya',
-      name: 'Marudaiougiya',
-      lat: 38.11228246118919,
-      lon: 140.036198935986,
-      radius: 15,
-      image: './Index/Picture/Marudaiougiya.png'
-    },
-    {
-      id: 'Nagaisiyakusho',
-      name: 'Nagaisiyakusho',
-      lat: 38.1063333593554,
-      lon: 140.033892868012,
-      radius: 15,
-      image: './Index/Picture/Nagaisiyakusho.png'
-    },
-    {
-      id: 'NagaiKougyokoukou',
-      name: 'NagaiKougyokoukou',
-      lat: 38.114426209437404,
-      lon: 140.03013087985815,
-      radius: 15,
-      image: './Index/Picture/NagaiKougyokoukou.png'
-    },
-    {
-      id: 'Nagaikoukou',
-      name: 'Nagaikoukou',
-      lat: 38.097283861825424,
-      lon: 140.0380452392042,
-      radius: 15,
-      image: './Index/Picture/Nagaikoukou.png'
-    },
-    {
-      id: 'MinamiNagai',
-      name: 'MinamiNagai',
-      lat: 38.09769549394771,
-      lon: 140.03458623775896,
-      radius: 15,
-      image: './Index/Picture/MinamiNagai.png'
-    },
-    {
-      id: 'Kurunt',
-      name: 'Kurunt',
-      lat: 38.10491876278905,
-      lon: 140.03466346205656,
-      radius: 15,
-      image: './Index/Picture/Kurunt.png'
-    }
+    { id: 'tas-park', name: 'TasParkHotel', lat: 38.10148128126027, lon: 140.0433090680094, radius: 20, image: './Index/Picture/TasParkHotel.png' },
+    { id: 'MichinoEkiNagai', name: 'MichinoEkiNagai', lat: 38.108970970886325, lon: 140.04382939078403, radius: 20, image: './Index/Picture/MichinoEkiNagai.png' },
+    { id: 'MNagaiShougakkou', name: 'MNagaiShougakkou', lat: 38.107796313044474, lon: 140.04269068239356, radius: 15, image: './Index/Picture/MNagaiShougakkou.png' },
+    { id: 'Kozakurakan', name: 'Kozakurakan', lat: 38.110963329145335, lon: 140.03632275489852, radius: 15, image: './Index/Picture/Kozakurakan.png' },
+    { id: 'Marudaiougiya', name: 'Marudaiougiya', lat: 38.11228246118919, lon: 140.036198935986, radius: 15, image: './Index/Picture/Marudaiougiya.png' },
+    { id: 'Nagaisiyakusho', name: 'Nagaisiyakusho', lat: 38.1063333593554, lon: 140.033892868012, radius: 15, image: './Index/Picture/Nagaisiyakusho.png' },
+    { id: 'NagaiKougyokoukou', name: 'NagaiKougyokoukou', lat: 38.114426209437404, lon: 140.03013087985815, radius: 15, image: './Index/Picture/NagaiKougyokoukou.png' },
+    { id: 'Nagaikoukou', name: 'Nagaikoukou', lat: 38.097283861825424, lon: 140.0380452392042, radius: 15, image: './Index/Picture/Nagaikoukou.png' },
+    { id: 'MinamiNagai', name: 'MinamiNagai', lat: 38.09769549394771, lon: 140.03458623775896, radius: 15, image: './Index/Picture/MinamiNagai.png' },
+    { id: 'Kurunt', name: 'Kurunt', lat: 38.10491876278905, lon: 140.03466346205656, radius: 15, image: './Index/Picture/Kurunt.png' }
   ];
 
   const hud = document.getElementById('hud');
 
-  // 距離計算
+  // 距離計算関数
   function distanceMeter(lat1, lon1, lat2, lon2) {
     const R = 6378137;
     const toRad = x => x * Math.PI / 180;
     const dLat = toRad(lat2 - lat1);
     const dLon = toRad(lon2 - lon1);
-    const a =
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
   }
@@ -173,19 +115,20 @@
     }
   }
 
-  // ② 地点ごとの <a-image> を作る
+  // ② 地点ごとの <a-image> を作成
   function createPlaceEntities() {
     const scene = document.querySelector('a-scene');
     PLACES.forEach(place => {
       const img = document.createElement('a-image');
       img.setAttribute('id', 'place-' + place.id);
       img.setAttribute('src', place.image);
-      img.setAttribute('position', '0 1.5 -3');   // カメラの前に固定表示
+      img.setAttribute('position', '0 1.5 -3');
       img.setAttribute('width', '2.5');
       img.setAttribute('height', '1.2');
       img.setAttribute('material', 'side: double;');
-      img.setAttribute('visible', 'false');        // 初期は非表示
+      img.setAttribute('visible', 'false');
       scene.appendChild(img);
+      place._isInside = false; // 初期状態フラグ
     });
   }
 
@@ -203,11 +146,9 @@
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
 
-        // HUDのベース部分
-        let hudText =
-          `現在のGPS:\nlat: ${lat.toFixed(6)}\nlon: ${lon.toFixed(6)}\n\n`;
+        let hudText = `現在のGPS:\nlat: ${lat.toFixed(6)}\nlon: ${lon.toFixed(6)}\n\n`;
 
-        // 各地点について判定
+        // 各地点の距離計算と表示制御
         PLACES.forEach(place => {
           const dist = distanceMeter(lat, lon, place.lat, place.lon);
           const entity = document.getElementById('place-' + place.id);
@@ -217,10 +158,17 @@
             entity.setAttribute('visible', isNear);
           }
 
-          hudText +=
-            `地点: ${place.name}\n` +
-            `  登録: ${place.lat}, ${place.lon}\n` +
-            `  距離: ${dist.toFixed(2)} m (半径${place.radius}m)\n\n`;
+          // ログ送信：入る・出るイベント検知
+          if (!place._isInside && isNear) {
+            sendLog({ place_id: place.id, event: 'enter', lat, lon });
+          }
+          if (place._isInside && !isNear) {
+            sendLog({ place_id: place.id, event: 'leave', lat, lon });
+          }
+
+          place._isInside = isNear;
+
+          hudText += `地点: ${place.name}\n登録: ${place.lat}, ${place.lon}\n距離: ${dist.toFixed(2)} m (半径${place.radius}m)\n\n`;
         });
 
         hudText += '※半径内に入った地点の画像だけが表示されます';
