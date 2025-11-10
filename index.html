@@ -124,6 +124,25 @@
         }
       });
     });
+// 追加：SafariでGPSを強制的に有効化するリクエスト
+if (navigator.permissions) {
+  navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+    if (result.state === 'denied') {
+      alert('位置情報の利用がブロックされています。「設定 > Safari > 位置情報」で許可してください。');
+    } else if (result.state === 'prompt') {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          console.log('位置情報を取得しました', pos.coords);
+        },
+        (err) => {
+          console.warn('位置情報の取得に失敗:', err);
+        },
+        { enableHighAccuracy: true }
+      );
+    }
+  });
+}
+
   </script>
 </body>
 </html>
