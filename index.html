@@ -2,26 +2,42 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>10地点 GPS走行ログ AR</title>
+  <title>GPSトリガーAR</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- ★A-Frameは1.2.0に下げる（AR.js 3.4系と相性がいい） -->
+  <!-- いま映っているのと同じ感じでOKなはずのバージョン -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-
-  <!-- ★AR.jsも安定版3.4.1を使う -->
   <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.1/aframe/build/aframe-ar.js"></script>
 
-  <!-- 開発用コンソール（なくてもOK） -->
+  <!-- デバッグ用（任意） -->
   <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
   <script>eruda.init();</script>
-</head>
 
+  <style>
+    /* 画面にGPSを文字で重ねて表示するため */
+    #hud {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      z-index: 9999;
+      background: rgba(0,0,0,0.55);
+      color: #fff;
+      font-size: 12px;
+      line-height: 1.4;
+      padding: 6px 8px;
+      border-radius: 4px;
+      max-width: 90vw;
+      white-space: pre-line;
+    }
+  </style>
+</head>
 <body style="margin:0; overflow:hidden;">
 
-  <!--
-    arjs のところで "trackingMethod: best;" などを足すと
-    たまにiOSで起動画面が止まるので、一番シンプルにしてあります
-  -->
+  <!-- 位置情報表示 -->
+  <div id="hud">
+    位置を取得中…
+  </div>
+
   <a-scene
     vr-mode-ui="enabled: false"
     embedded
@@ -29,115 +45,88 @@
     renderer="antialias: true; alpha: true"
   >
 
-    <!-- ★まずは固定の赤い箱：これが見えれば描画OK -->
-    <a-box
-      id="test-box"
-      position="0 1.5 -3"
-      depth="1" height="1" width="1"
-      color="#FF0000"
-      material="opacity: 1; side: double;"
-    ></a-box>
-
-    <!-- ★GPSカメラ（まずはシミュレーションで固定場所） -->
+    <!-- GPSカメラ：まずはシミュレーションで固定しておく -->
     <a-camera
       gps-camera="simulateLatitude: 38.10148128126027; simulateLongitude: 140.0433090680094;"
       rotation-reader
     ></a-camera>
 
-    <!-- ★本番で出したい画像たちはここに。最初は非表示のまま -->
+    <!-- これが「近づいたら出すコンテンツ」。
+         ここではあなたの画像をカメラ前に出す。初期は非表示。 -->
     <a-image
-      id="ar-point-1"
+      id="near-content"
       src="./Index/Picture/TasParkHotel.png"
-      gps-entity-place="latitude: 38.10148128126027; longitude: 140.0433090680094"
-      scale="40 40 40"
-      visible="false"
+      position="0 1.5 -3"
+      width="2.5"
+      height="1.2"
       material="side: double;"
+      visible="false"
     ></a-image>
 
-    <a-image
-      id="ar-point-2"
-      src="./Index/Picture/MichinoEkiNagai.png"
-      gps-entity-place="latitude: 38.108970970886325; longitude: 140.04382939078403"
-      scale="40 40 40"
-      visible="false"
-      material="side: double;"
-    ></a-image>
-
-    <a-image
-      id="ar-point-3"
-      src="./Index/Picture/MNagaiShougakkou.png"
-      gps-entity-place="latitude: 38.107796313044474; longitude: 140.04269068239356"
-      scale="40 40 40"
-      visible="false"
-      material="side: double;"
-    ></a-image>
-
-    <a-image
-      id="ar-point-4"
-      src="./Index/Picture/Kozakurakan.png"
-      gps-entity-place="latitude: 38.110963329145335; longitude: 140.03632275489852"
-      scale="40 40 40"
-      visible="false"
-      material="side: double;"
-    ></a-image>
-
-    <a-image
-      id="ar-point-5"
-      src="./Index/Picture/Marudaiougiya.png"
-      gps-entity-place="latitude: 38.11228246118919; longitude: 140.036198935986"
-      scale="40 40 40"
-      visible="false"
-      material="side: double;"
-    ></a-image>
-
-    <a-image
-      id="ar-point-6"
-      src="./Index/Picture/Nagaisiyakusho.png"
-      gps-entity-place="latitude: 38.1063333593554; longitude: 140.033892868012"
-      scale="40 40 40"
-      visible="false"
-      material="side: double;"
-    ></a-image>
-
-    <a-image
-      id="ar-point-7"
-      src="./Index/Picture/NagaiKougyokoukou.png"
-      gps-entity-place="latitude: 38.114426209437404; longitude: 140.03013087985815"
-      scale="40 40 40"
-      visible="false"
-      material="side: double;"
-    ></a-image>
-
-    <a-image
-      id="ar-point-8"
-      src="./Index/Picture/Nagaikoukou.png"
-      gps-entity-place="latitude: 38.097283861825424; longitude: 140.0380452392042"
-      scale="40 40 40"
-      visible="false"
-      material="side: double;"
-    ></a-image>
-
-    <a-image
-      id="ar-point-9"
-      src="./Index/Picture/MinamiNagai.png"
-      gps-entity-place="latitude: 38.09769549394771; longitude: 140.03458623775896"
-      scale="40 40 40"
-      visible="false"
-      material="side: double;"
-    ></a-image>
-
-    <a-image
-      id="ar-point-10"
-      src="./Index/Picture/Kurunt.png"
-      gps-entity-place="latitude: 38.104867027791485; longitude: 140.03472544854446"
-      scale="40 40 40"
-      visible="false"
-      material="side: double;"
-    ></a-image>
+    <!-- これは「いつも見えてるかどうか確認用」の小さな箱（不要なら消してOK） -->
+    <a-box position="0 0 -2" depth="0.2" height="0.2" width="0.2" color="#00FFAA"></a-box>
 
   </a-scene>
 
-  <!-- 位置イベント確認＋近づいたら表示にする -->
-  <script src="./gps-ar.js"></script>
+  <script>
+    // ★ここで「登録しておくGPS」を決める
+    const TARGET = {
+      lat: 38.10148128126027,
+      lon: 140.0433090680094
+    };
+    const THRESHOLD_M = 10; // 何メートル以内で表示するか（ここでは10m）
+
+    const hud = document.getElementById('hud');
+    const nearContent = document.getElementById('near-content');
+
+    // 距離をメートルで出す関数（簡易版）
+    function distanceMeter(lat1, lon1, lat2, lon2) {
+      function toRad(v){ return v * Math.PI / 180; }
+      const R = 6378137;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a =
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    window.addEventListener('load', () => {
+      const cam = document.querySelector('[gps-camera]');
+      if (!cam) {
+        hud.textContent = 'gps-cameraが見つかりません';
+        return;
+      }
+
+      // AR.jsがGPSを更新するたびに飛んでくるイベント
+      cam.addEventListener('gps-camera-update-position', (e) => {
+        const cur = e.detail.position;
+        const curLat = cur.latitude;
+        const curLon = cur.longitude;
+
+        const dist = distanceMeter(curLat, curLon, TARGET.lat, TARGET.lon);
+
+        // 画面に今の値を表示
+        hud.textContent =
+          '現在のGPS:\n' +
+          'lat: ' + curLat.toFixed(8) + '\n' +
+          'lon: ' + curLon.toFixed(8) + '\n' +
+          '\n登録GPS:\n' +
+          'lat: ' + TARGET.lat + '\n' +
+          'lon: ' + TARGET.lon + '\n' +
+          '\n距離: ' + dist.toFixed(2) + ' m' +
+          '\n( ' + THRESHOLD_M + ' m以内で表示 )';
+
+        // 一定距離以内ならコンテンツを表示
+        if (dist <= THRESHOLD_M) {
+          nearContent.setAttribute('visible', true);
+        } else {
+          nearContent.setAttribute('visible', false);
+        }
+      });
+    });
+  </script>
 </body>
 </html>
