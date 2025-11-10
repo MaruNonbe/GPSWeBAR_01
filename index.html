@@ -2,14 +2,14 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>GPSトリガーAR</title>
+  <title>GPSトリガーAR（iPhone対応完全版）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- A-Frame + AR.js -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.1/aframe/build/aframe-ar.js"></script>
 
-  <!-- デバッグコンソール（任意） -->
+  <!-- デバッグ用（任意） -->
   <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
   <script>eruda.init();</script>
 
@@ -33,8 +33,10 @@
 </head>
 <body>
 
+  <!-- 現在地・距離を表示するHUD -->
   <div id="hud">位置を取得中…</div>
 
+  <!-- ARシーン -->
   <a-scene
     vr-mode-ui="enabled: false"
     embedded
@@ -42,10 +44,10 @@
     renderer="antialias: true; alpha: true"
   >
 
-    <!-- 実機のGPSを使う -->
+    <!-- カメラ：GPS使用 -->
     <a-camera gps-camera rotation-reader></a-camera>
 
-    <!-- 到達したときに出すコンテンツ -->
+    <!-- 対象地点で出す画像 -->
     <a-image
       id="near-content"
       src="./Index/Picture/TasParkHotel.png"
@@ -62,15 +64,15 @@
   </a-scene>
 
   <script>
-  const TARGET = { lat: 38.10148128126027, lon: 140.0433090680094 };
-  const THRESHOLD_M = 10;
-
+  // ======== 設定 ========
+  const TARGET = { lat: 38.10148128126027, lon: 140.0433090680094 }; // 登録地点
+  const THRESHOLD_M = 10; // 何メートル以内で表示するか
   const hud = document.getElementById('hud');
   const nearContent = document.getElementById('near-content');
 
-  // 距離計算
+  // ======== 距離を求める関数 ========
   function distanceMeter(lat1, lon1, lat2, lon2) {
-    const R = 6378137;
+    const R = 6378137; // 地球半径[m]
     const toRad = x => x * Math.PI / 180;
     const dLat = toRad(lat2 - lat1);
     const dLon = toRad(lon2 - lon1);
@@ -79,18 +81,22 @@
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   }
 
+  // ======== GPSの監視開始 ========
   function startGPSWatch(cam) {
     if (!navigator.geolocation) {
       hud.textContent = 'このブラウザではGPSが利用できません';
       return;
     }
 
+    console.log('GPSウォッチ開始');
+
     navigator.geolocation.watchPosition(
       (pos) => {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
+        console.log('📍取得成功:', lat, lon);
 
-        // AR.js にも反映（初期化済みかチェック）
+        // AR.js の gps-camera に反映（初期化済みかチェック）
         if (cam && cam.components && cam.components["gps-camera"]) {
           cam.components["gps-camera"].updatePosition({ latitude: lat, longitude: lon });
         }
@@ -102,6 +108,7 @@
           `登録GPS:\nlat: ${TARGET.lat}\nlon: ${TARGET.lon}\n\n` +
           `距離: ${dist.toFixed(2)} m\n(${THRESHOLD_M}m以内で表示)`;
 
+        // 一定距離以内なら画像を表示
         nearContent.setAttribute('visible', dist <= THRESHOLD_M);
       },
       (err) => {
@@ -112,22 +119,39 @@
     );
   }
 
-  // ページ読み込み後に開始
-  window.addEventListener('load', () => {
-    const cam = document.querySelector('[gps-camera]');
-
-    if (navigator.permissions) {
-      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
-        if (result.state === 'denied') {
-          alert('位置情報の利用がブロックされています。「設定 > Safari > 位置情報」で許可してください。');
+  // ======== iOSセンサー許可の要求 ========
+  async function requestIOSPermissions() {
+    // 1️⃣ 方位センサー許可（iOS 17+）
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        const response = await DeviceOrientationEvent.requestPermission();
+        if (response === 'granted') {
+          console.log('✅ Device orientation permission granted');
         } else {
-          startGPSWatch(cam);
+          alert('デバイスの向きセンサーの許可が必要です。「再読み込み」後に許可してください。');
         }
-      });
-    } else {
-      startGPSWatch(cam);
+      } catch (e) {
+        console.error('Device orientation permission error:', e);
+      }
     }
+
+    // 2️⃣ 位置情報許可確認
+    if (navigator.permissions) {
+      const result = await navigator.permissions.query({ name: 'geolocation' });
+      if (result.state === 'denied') {
+        alert('位置情報がブロックされています。「設定 > Safari > 位置情報」で許可してください。');
+      }
+    }
+  }
+
+  // ======== ページロード時の処理 ========
+  window.addEventListener('load', async () => {
+    const cam = document.querySelector('[gps-camera]');
+    await requestIOSPermissions(); // センサー・位置情報許可
+    startGPSWatch(cam);            // GPS監視スタート
   });
   </script>
+
 </body>
 </html>
