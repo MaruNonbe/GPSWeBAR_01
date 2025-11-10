@@ -2,90 +2,62 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
-  <title>GPS AR テスト</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>GPS WebAR シンプル版</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <!-- ★A-Frame は 1.2.0 に固定 -->
-  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+  <!-- A-Frame 本体 -->
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 
-  <!-- ★AR.js も 3.4.7 に固定（location-based入り） -->
-  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.7/aframe/build/aframe-ar.js"></script>
-
-  <style>
-    body { margin: 0; overflow: hidden; }
-    #motion-btn {
-      position: fixed;
-      top: 10px;
-      left: 10px;
-      z-index: 9999;
-      background: rgba(0,0,0,0.7);
-      color: #fff;
-      padding: 10px 14px;
-      border-radius: 6px;
-      font-size: 14px;
-      cursor: pointer;
-    }
-  </style>
+  <!-- GPS対応の AR.js（aframe 版）-->
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
 </head>
-<body>
+<body style="margin: 0; overflow: hidden">
+  <!--
+    いちばんシンプルな AR.js シーン
+    ・sourceType: webcam でカメラON
+    ・debugUIEnabled: false で余計な UI を消す
+  -->
+  <a-scene
+    embedded
+    vr-mode-ui="enabled: false"
+    arjs="sourceType: webcam; debugUIEnabled: false;"
+  >
 
-<!-- iOS の「モーションと画面の向き」を取るボタン -->
-<div id="motion-btn">モーションと画面の向きを許可</div>
+    <!-- 実機のGPSをそのまま使うカメラ ※シミュレートしない -->
+    <a-camera gps-camera rotation-reader></a-camera>
 
-<a-scene
-  vr-mode-ui="enabled: false"
-  embedded
-  renderer="antialias: true; alpha: true"
-  arjs="sourceType: webcam; videoTexture: true; debugUIEnabled: false;"
->
-  <!-- ★実機GPSを使うなら gps-camera だけでOK -->
-  <!-- まずは固定位置でテストするなら simulate～ を付ける -->
-  <a-camera
-    gps-camera="simulateLatitude: 38.10148128126027; simulateLongitude: 140.0433090680094;"
-    rotation-reader
-  ></a-camera>
+    <!-- ここに「位置が合ったら表示する画像」たちを置いておく -->
+    <!-- 最初は見えない状態にしておいて、gps-ar.js で visible を true にします -->
 
-  <!-- ★これが見えたら勝ち -->
-  <a-image
-    id="target1"
-    src="./Index/Picture/TasParkHotel.png"
-    gps-entity-place="latitude: 38.10148128126027; longitude: 140.0433090680094"
-    scale="40 40 40"
-    visible="true"
-  ></a-image>
+    <a-image
+      id="ar-point-1"
+      src="./Index/Picture/TasParkHotel.png"
+      gps-entity-place="latitude: 38.10148128126027; longitude: 140.0433090680094"
+      scale="20 20 20"
+      visible="false"
+    ></a-image>
 
-</a-scene>
+    <a-image
+      id="ar-point-2"
+      src="./Index/Picture/MichinoEkiNagai.png"
+      gps-entity-place="latitude: 38.108970970886325; longitude: 140.04382939078403"
+      scale="20 20 20"
+      visible="false"
+    ></a-image>
 
-<script>
-  // iOS13+ 用のモーション許可
-  const btn = document.getElementById('motion-btn');
-  btn.addEventListener('click', async () => {
-    try {
-      if (typeof DeviceMotionEvent !== 'undefined' &&
-          typeof DeviceMotionEvent.requestPermission === 'function') {
-        const r1 = await DeviceMotionEvent.requestPermission();
-        console.log('DeviceMotion permission:', r1);
-      }
-      if (typeof DeviceOrientationEvent !== 'undefined' &&
-          typeof DeviceOrientationEvent.requestPermission === 'function') {
-        const r2 = await DeviceOrientationEvent.requestPermission();
-        console.log('DeviceOrientation permission:', r2);
-      }
-    } catch (e) {
-      console.warn(e);
-    }
-    btn.style.display = 'none';
-  });
+    <a-image
+      id="ar-point-3"
+      src="./Index/Picture/MNagaiShougakkou.png"
+      gps-entity-place="latitude: 38.107796313044474; longitude: 140.04269068239356"
+      scale="20 20 20"
+      visible="false"
+    ></a-image>
 
-  // 位置イベントが来ているかも一応出す
-  window.addEventListener('load', () => {
-    const cam = document.querySelector('[gps-camera]');
-    if (!cam) return;
-    cam.addEventListener('gps-camera-update-position', e => {
-      console.log('gps pos:', e.detail.position);
-    });
-  });
-</script>
+    <!-- 必要ならここに 4〜10 も同じ書き方で増やせます -->
 
+  </a-scene>
+
+  <!-- 自分のロジック -->
+  <script src="./gps-ar.js"></script>
 </body>
 </html>
