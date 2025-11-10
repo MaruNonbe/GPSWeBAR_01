@@ -5,16 +5,15 @@
   <title>GPSトリガーAR</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- いま映っているのと同じ感じでOKなはずのバージョン -->
+  <!-- A-Frame + AR.js -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.1/aframe/build/aframe-ar.js"></script>
 
-  <!-- デバッグ用（任意） -->
+  <!-- デバッグコンソール（任意。不要なら消してください） -->
   <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
   <script>eruda.init();</script>
 
   <style>
-    /* 画面にGPSを文字で重ねて表示するため */
     #hud {
       position: fixed;
       top: 8px;
@@ -29,14 +28,13 @@
       max-width: 90vw;
       white-space: pre-line;
     }
+    body { margin:0; overflow:hidden; }
   </style>
 </head>
-<body style="margin:0; overflow:hidden;">
+<body>
 
   <!-- 位置情報表示 -->
-  <div id="hud">
-    位置を取得中…
-  </div>
+  <div id="hud">位置を取得中…</div>
 
   <a-scene
     vr-mode-ui="enabled: false"
@@ -45,14 +43,13 @@
     renderer="antialias: true; alpha: true"
   >
 
-    <!-- GPSカメラ：まずはシミュレーションで固定しておく -->
+    <!-- ✅ 実機のGPSをそのまま使う -->
     <a-camera
-      gps-camera="simulateLatitude: 38.10148128126027; simulateLongitude: 140.0433090680094;"
+      gps-camera
       rotation-reader
     ></a-camera>
 
-    <!-- これが「近づいたら出すコンテンツ」。
-         ここではあなたの画像をカメラ前に出す。初期は非表示。 -->
+    <!-- 近づいたときに出す画像（最初は非表示） -->
     <a-image
       id="near-content"
       src="./Index/Picture/TasParkHotel.png"
@@ -63,23 +60,23 @@
       visible="false"
     ></a-image>
 
-    <!-- これは「いつも見えてるかどうか確認用」の小さな箱（不要なら消してOK） -->
+    <!-- 常に見えるデバッグ用の小さい箱 -->
     <a-box position="0 0 -2" depth="0.2" height="0.2" width="0.2" color="#00FFAA"></a-box>
 
   </a-scene>
 
   <script>
-    // ★ここで「登録しておくGPS」を決める
+    // ★ここで「到達したいGPS」を指定
     const TARGET = {
       lat: 38.10148128126027,
       lon: 140.0433090680094
     };
-    const THRESHOLD_M = 10; // 何メートル以内で表示するか（ここでは10m）
+    const THRESHOLD_M = 10; // 何m以内で表示するか
 
     const hud = document.getElementById('hud');
     const nearContent = document.getElementById('near-content');
 
-    // 距離をメートルで出す関数（簡易版）
+    // 距離をメートルで出す関数
     function distanceMeter(lat1, lon1, lat2, lon2) {
       function toRad(v){ return v * Math.PI / 180; }
       const R = 6378137;
@@ -100,7 +97,7 @@
         return;
       }
 
-      // AR.jsがGPSを更新するたびに飛んでくるイベント
+      // AR.jsが位置を更新するたびに飛んでくる
       cam.addEventListener('gps-camera-update-position', (e) => {
         const cur = e.detail.position;
         const curLat = cur.latitude;
@@ -108,7 +105,7 @@
 
         const dist = distanceMeter(curLat, curLon, TARGET.lat, TARGET.lon);
 
-        // 画面に今の値を表示
+        // HUD表示を更新
         hud.textContent =
           '現在のGPS:\n' +
           'lat: ' + curLat.toFixed(8) + '\n' +
@@ -119,7 +116,7 @@
           '\n距離: ' + dist.toFixed(2) + ' m' +
           '\n( ' + THRESHOLD_M + ' m以内で表示 )';
 
-        // 一定距離以内ならコンテンツを表示
+        // 一定距離以内なら表示
         if (dist <= THRESHOLD_M) {
           nearContent.setAttribute('visible', true);
         } else {
