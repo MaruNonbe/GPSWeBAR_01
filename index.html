@@ -188,14 +188,6 @@ function distanceMeter(lat1, lon1, lat2, lon2){
 function createPlaceEntities(){
   const scene = document.querySelector('a-scene');
 
-  /* ① 常に見えるテスト用（GPSと無関係） */
-  const test = document.createElement('a-box');
-  test.setAttribute('position','0 1.5 -3');
-  test.setAttribute('color','#ffff55');
-  test.setAttribute('scale','2 2 2');
-  test.setAttribute('animation','property: rotation; to: 0 360 0; loop: true; dur: 8000; easing: linear');
-  scene.appendChild(test);
-
   /* ② GPSで出すやつ */
   PLACES.forEach((p, idx) => {
     const wrapper = document.createElement('a-entity');
