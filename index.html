@@ -9,11 +9,9 @@
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.1/aframe/build/aframe-ar.js"></script>
 
-  <!-- （必要なら）コンソール表示 -->
-  <!--
+  <!-- デバッグ(不要なら消してOK) -->
   <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
   <script>eruda.init();</script>
-  -->
 
   <style>
     :root { --tab-h: 50px; }
@@ -23,7 +21,6 @@
       font-family: sans-serif;
       background: #000;
     }
-
     /* タブ */
     #tabs {
       position: fixed;
@@ -44,7 +41,7 @@
     }
     #tabs button.active { background: #333; }
 
-    /* ARシーンはタブの下に貼り付け */
+    /* ARシーン */
     a-scene {
       position: fixed !important;
       top: var(--tab-h);
@@ -54,10 +51,10 @@
       width: 100% !important;
       height: calc(100vh - var(--tab-h)) !important;
       z-index: 1;
-      display: none; /* 許可ボタンを押すまでは非表示 */
+      display: none; /* ボタン押すまで出さない */
     }
 
-    /* HUD(現在位置) */
+    /* HUD */
     #hud {
       position: fixed;
       top: calc(var(--tab-h) + 8px);
@@ -74,7 +71,7 @@
       display: none;
     }
 
-    /* マップ表示 */
+    /* マップ */
     #map-view {
       position: fixed;
       top: var(--tab-h);
@@ -86,7 +83,7 @@
     }
     #map { width: 100%; height: 100%; }
 
-    /* 許可オーバーレイ */
+    /* 許可ボタン */
     #permissionOverlay {
       position: fixed;
       inset: 0;
@@ -137,11 +134,10 @@
     id="ar-scene"
   >
     <a-assets>
-      <!-- シンプルな音源（自由に差し替え可） -->
+      <!-- 適当な効果音。不要なら消してOK -->
       <audio id="ding" src="https://cdn.aframe.io/basic-guide/audio/backgroundnoise.wav"></audio>
     </a-assets>
 
-    <!-- GPS用カメラ -->
     <a-camera gps-camera rotation-reader></a-camera>
   </a-scene>
 
@@ -151,23 +147,21 @@
   </div>
 
 <script>
-/* ===== 1. ログ送信用GASのURL ===== */
+/* ========= 1. GASのURL ========= */
 const LOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw_uhqYjG25qdhdrZ6zCZgjTCKPVypqmTcgKenXBtt4LSBCaoARHYSAYxtMEHijY1rSdA/exec';
 
 function sendLog(p){
-  fetch(LOG_ENDPOINT, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(p)
-  }).catch(e => console.warn('log fail', e));
+  fetch(LOG_ENDPOINT,{
+    method:'POST',
+    mode:'no-cors',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(p)
+  }).catch(e=>console.warn('log fail',e));
 }
 
-/* ===== 2. 10地点の定義 =====
-   半径は表示しやすいように 50m にしています
-*/
+/* ========= 2. GPS地点 ========= */
 const PLACES = [
-  { id: 'tas-park',         name: 'TasParkHotel',       lat: 38.10148128126027,  lon: 140.0433090680094,  radius: 100 },
+  { id: 'tas-park',         name: 'TasParkHotel',       lat: 38.10148128126027, lon: 140.0433090680094, radius: 20 },
   { id: 'MichinoEkiNagai',  name: 'MichinoEkiNagai',    lat: 38.108970970886325, lon: 140.04382939078403, radius: 100 },
   { id: 'MNagaiShougakkou', name: 'MNagaiShougakkou',   lat: 38.107796313044474, lon: 140.04269068239356, radius: 100 },
   { id: 'Kozakurakan',      name: 'Kozakurakan',        lat: 38.110963329145335, lon: 140.03632275489852, radius: 100 },
@@ -181,217 +175,212 @@ const PLACES = [
 
 const hud = document.getElementById('hud');
 
-/* ===== 距離計算（メートル） ===== */
+/* ========= 距離計算 ========= */
 function distanceMeter(lat1, lon1, lat2, lon2){
-  const R = 6378137;
-  const toRad = x => x * Math.PI / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat/2)**2 +
-            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-            Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const R=6378137, toRad=x=>x*Math.PI/180;
+  const dLat=toRad(lat2-lat1);
+  const dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-/* ===== 3. 3Dエンティティ生成 =====
-   - ぜんぶ scale="10 10 10"
-   - 画面から少し離して position="0 1.5 -6"
-*/
+/* ========= 3Dエンティティ生成 ========= */
 function createPlaceEntities(){
   const scene = document.querySelector('a-scene');
 
+  /* ① 常に見えるテスト用（GPSと無関係） */
+  const test = document.createElement('a-box');
+  test.setAttribute('position','0 1.5 -3');
+  test.setAttribute('color','#ffff55');
+  test.setAttribute('scale','2 2 2');
+  test.setAttribute('animation','property: rotation; to: 0 360 0; loop: true; dur: 8000; easing: linear');
+  scene.appendChild(test);
+
+  /* ② GPSで出すやつ */
   PLACES.forEach((p, idx) => {
     const wrapper = document.createElement('a-entity');
     wrapper.setAttribute('id', 'place-' + p.id);
-    wrapper.setAttribute('position', '0 1.5 -6');  // 少し前方
+    wrapper.setAttribute('position', '0 1.5 -6');     // カメラから6m前に固定
     wrapper.setAttribute('visible', 'false');
 
-    // 入室用の音
+    // サウンド
     const snd = document.createElement('a-sound');
     snd.setAttribute('id', 'sound-' + p.id);
     snd.setAttribute('src', '#ding');
     snd.setAttribute('autoplay', 'false');
+    snd.setAttribute('volume', '2.0');
     wrapper.appendChild(snd);
 
     let child;
-
     switch(idx){
-      case 0: // 赤い箱
+      case 0:
         child = document.createElement('a-box');
-        child.setAttribute('color', '#ff4444');
+        child.setAttribute('color','#ff4444');
         break;
-      case 1: // 青い球
+      case 1:
         child = document.createElement('a-sphere');
-        child.setAttribute('color', '#448aff');
+        child.setAttribute('color','#448aff');
         break;
-      case 2: // 緑の円錐
+      case 2:
         child = document.createElement('a-cone');
-        child.setAttribute('color', '#4caf50');
+        child.setAttribute('color','#4caf50');
         break;
-      case 3: // オレンジ円柱
+      case 3:
         child = document.createElement('a-cylinder');
-        child.setAttribute('color', '#ff9800');
+        child.setAttribute('color','#ff9800');
         break;
-      case 4: // 紫トーラス（geometryで作る）
-        child = document.createElement('a-entity');
-        child.setAttribute('geometry', 'primitive: torus; radius: 0.8; radiusTubular: 0.12');
-        child.setAttribute('material', 'color: #9c27b0');
+      case 4:
+        child = document.createElement('a-torus');
+        child.setAttribute('radius','0.8');
+        child.setAttribute('radius-tubular','0.12');
+        child.setAttribute('color','#9c27b0');
         break;
-      case 5: // 水色の四面体
-        child = document.createElement('a-entity');
-        child.setAttribute('geometry', 'primitive: tetrahedron; radius: 1');
-        child.setAttribute('material', 'color: #00bcd4');
+      case 5:
+        child = document.createElement('a-tetrahedron');
+        child.setAttribute('color','#00bcd4');
         break;
-      case 6: // 黄緑の箱
+      case 6:
         child = document.createElement('a-box');
-        child.setAttribute('color', '#cddc39');
+        child.setAttribute('color','#cddc39');
         break;
-      case 7: // オレンジの小球
+      case 7:
         child = document.createElement('a-sphere');
-        child.setAttribute('color', '#ff6f00');
+        child.setAttribute('color','#ff6f00');
         break;
-      case 8: // 茶色の円錐
+      case 8:
         child = document.createElement('a-cone');
-        child.setAttribute('color', '#795548');
+        child.setAttribute('color','#795548');
         break;
       case 9:
-      default: // 水色の大きめ箱
+      default:
         child = document.createElement('a-box');
-        child.setAttribute('color', '#03a9f4');
+        child.setAttribute('color','#03a9f4');
         break;
     }
 
-    // ★ここでサイズ10倍
-    child.setAttribute('scale', '10 10 10');
-
-    // くるくる回す
-    child.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 8000; easing: linear');
+    // 👇ここで10倍
+    child.setAttribute('scale','10 10 10');
+    child.setAttribute('animation','property: rotation; to: 0 360 0; loop: true; dur: 8000; easing: linear');
 
     wrapper.appendChild(child);
     scene.appendChild(wrapper);
 
-    // 内部状態
+    // 状態保持
     p._isInside = false;
   });
 }
 
-/* ===== GPS監視＆ログ ===== */
-let lastPos = null;
-let lastSentAt = 0;
-let map, mapPolyline, mapPath = [];
+/* ========= GPS監視 ========= */
+let lastPos=null;
+let lastSentAt=0;
+let map, mapPolyline, mapPath=[];
 
 function startGPSWatch(){
-  navigator.geolocation.watchPosition(pos => {
-    const lat = pos.coords.latitude;
-    const lon = pos.coords.longitude;
-    const acc = pos.coords.accuracy;
-    lastPos = {lat, lon, acc};
+  navigator.geolocation.watchPosition(pos=>{
+    const lat=pos.coords.latitude;
+    const lon=pos.coords.longitude;
+    const acc=pos.coords.accuracy;
+    lastPos={lat,lon,acc};
 
-    hud.textContent = `📍 現在位置\nlat:${lat.toFixed(6)}\nlon:${lon.toFixed(6)}\n精度:±${acc.toFixed(1)}m`;
+    hud.textContent=`📍 現在位置\nlat:${lat.toFixed(6)}\nlon:${lon.toFixed(6)}\n精度:±${acc.toFixed(1)}m`;
 
-    // 各地点との距離で表示ON/OFF
-    PLACES.forEach(p => {
-      const dist = distanceMeter(lat, lon, p.lat, p.lon);
-      const ent  = document.getElementById('place-' + p.id);
-      const snd  = document.getElementById('sound-' + p.id);
-      const near = dist <= p.radius;
+    // 各地点チェック
+    PLACES.forEach(p=>{
+      const dist=distanceMeter(lat,lon,p.lat,p.lon);
+      const ent=document.getElementById('place-'+p.id);
+      const snd=document.getElementById('sound-'+p.id);
+      const near=dist <= p.radius;
 
       if (ent) ent.setAttribute('visible', near);
 
-      // 入った瞬間だけログ＆音
-      if (!p._isInside && near){
-        sendLog({place_id: p.id, event: 'enter', lat, lon});
-        if (snd && snd.components && snd.components.sound){
+      if(!p._isInside && near){
+        sendLog({place_id:p.id,event:'enter',lat,lon});
+        if (snd && snd.components && snd.components.sound) {
           snd.components.sound.playSound();
         }
       }
-      if (p._isInside && !near){
-        sendLog({place_id: p.id, event: 'leave', lat, lon});
+      if(p._isInside && !near){
+        sendLog({place_id:p.id,event:'leave',lat,lon});
       }
       p._isInside = near;
     });
 
-    // マップ向けにも保存
-    if (map){
-      const posLatLng = {lat, lng: lon};
+    // マップ描画
+    if(map){
+      const posLatLng={lat, lng:lon};
       mapPath.push(posLatLng);
       mapPolyline.setPath(mapPath);
       map.setCenter(posLatLng);
     }
 
-  }, err => {
-    hud.textContent = '位置情報が取得できません（' + err.message + '）';
-  }, {enableHighAccuracy: true, maximumAge: 0, timeout: 5000});
+  },err=>{
+    hud.textContent='位置情報が取得できません（'+err.message+'）';
+  },{enableHighAccuracy:true, maximumAge:0, timeout:5000});
 
-  // 5秒おきの位置ログ
-  setInterval(() => {
-    if (!lastPos) return;
-    const now = Date.now();
-    if (now - lastSentAt < 5000) return;
-    sendLog({place_id: 'current', event: 'position', lat: lastPos.lat, lon: lastPos.lon});
-    lastSentAt = now;
-  }, 5000);
+  // 5秒ごとに現在位置をログへ
+  setInterval(()=>{
+    if(!lastPos) return;
+    const now=Date.now();
+    if(now-lastSentAt<5000) return;
+    sendLog({place_id:'current',event:'position',lat:lastPos.lat,lon:lastPos.lon});
+    lastSentAt=now;
+  },5000);
 }
 
-/* ===== Googleマップ初期化 ===== */
+/* ========= Googleマップ ========= */
 function initMap(){
-  const center = lastPos ? {lat: lastPos.lat, lng: lastPos.lon} : {lat: 38.1014, lng: 140.0433};
-  map = new google.maps.Map(document.getElementById('map'), {
-    center,
-    zoom: 16
+  const center = lastPos ? {lat:lastPos.lat,lng:lastPos.lon} : {lat:38.1014,lng:140.0433};
+  map = new google.maps.Map(document.getElementById('map'),{
+    center, zoom:16
   });
   mapPolyline = new google.maps.Polyline({
     map,
-    path: [],
-    strokeColor: '#ff0000',
-    strokeWeight: 3
+    path:[],
+    strokeColor:'#ff0000',
+    strokeWeight:3
   });
 }
 
-/* ===== タブ切り替え ===== */
-const tabAr   = document.getElementById('tab-ar');
-const tabMap  = document.getElementById('tab-map');
-const sceneEl = document.getElementById('ar-scene');
-const mapView = document.getElementById('map-view');
+/* ========= タブ ========= */
+const tabAr=document.getElementById('tab-ar');
+const tabMap=document.getElementById('tab-map');
+const sceneEl=document.getElementById('ar-scene');
+const mapView=document.getElementById('map-view');
 
-tabAr.addEventListener('click', () => {
+tabAr.addEventListener('click',()=>{
   tabAr.classList.add('active');
   tabMap.classList.remove('active');
-  sceneEl.style.display = 'block';
-  mapView.style.display  = 'none';
+  sceneEl.style.display='block';
+  mapView.style.display='none';
 });
-
-tabMap.addEventListener('click', () => {
+tabMap.addEventListener('click',()=>{
   tabMap.classList.add('active');
   tabAr.classList.remove('active');
-  sceneEl.style.display = 'none';
-  mapView.style.display  = 'block';
-  if (!map) initMap();
+  sceneEl.style.display='none';
+  mapView.style.display='block';
+  if(!map) initMap();
 });
 
-/* ===== 許可ボタン ===== */
-document.getElementById('startBtn').addEventListener('click', async () => {
+/* ========= 許可ボタン ========= */
+document.getElementById('startBtn').addEventListener('click', async ()=>{
   // iOSの向き許可
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function') {
     try {
       await DeviceOrientationEvent.requestPermission();
     } catch (e) {
-      console.warn('orientation err', e);
+      console.warn(e);
     }
   }
 
-  // geolocationもこのクリック内で起動
-  if (navigator.geolocation){
+  // Geolocationもこのタップ内で開始
+  if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(()=>{}, ()=>{}, {enableHighAccuracy:true});
   }
 
-  // 表示を出す
-  document.getElementById('permissionOverlay').style.display = 'none';
-  sceneEl.style.display = 'block';
-  hud.style.display      = 'block';
-
-  // 3Dを作ってからGPS監視開始
+  document.getElementById('permissionOverlay').style.display='none';
+  sceneEl.style.display='block';
+  hud.style.display='block';
   createPlaceEntities();
   startGPSWatch();
 });
