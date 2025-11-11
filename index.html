@@ -39,17 +39,17 @@
     }
     #tabs button.active { background: #333; }
 
-    /* ARシーンはタブの下で固定、最初は非表示 */
-    a-scene {
-      position: fixed !important;
+    /* ARコンテナ（中身はあとで作る） */
+    #ar-container {
+      position: fixed;
       top: var(--tab-h);
       left: 0;
       right: 0;
       bottom: 0;
-      width: 100% !important;
-      height: calc(100vh - var(--tab-h)) !important;
+      width: 100%;
+      height: calc(100vh - var(--tab-h));
       z-index: 1;
-      display: none;   /* ←許可が終わるまで隠す */
+      display: none; /* ボタン押すまで非表示 */
     }
 
     /* HUD */
@@ -66,7 +66,7 @@
       border-radius: 4px;
       white-space: pre-line;
       max-width: 90vw;
-      display: none;   /* AR表示になってから出す */
+      display: none;
     }
 
     /* マップ */
@@ -123,16 +123,8 @@
   <!-- HUD -->
   <div id="hud">位置を取得中…</div>
 
-  <!-- ARシーン -->
-  <a-scene
-    vr-mode-ui="enabled: false"
-    embedded
-    arjs="sourceType: webcam; debugUIEnabled: false;"
-    renderer="antialias: true; alpha: true"
-    id="ar-scene"
-  >
-    <a-camera gps-camera rotation-reader></a-camera>
-  </a-scene>
+  <!-- ここにあとで a-scene を差し込む -->
+  <div id="ar-container"></div>
 
   <!-- マップ表示 -->
   <div id="map-view">
@@ -151,6 +143,7 @@ function sendLog(p){
   }).catch(e=>console.warn('log fail',e));
 }
 
+// 10地点
 const PLACES = [
   { id: 'tas-park',         name: 'TasParkHotel',       lat: 38.10148128126027, lon: 140.0433090680094, radius: 20, image: './Index/Picture/TasParkHotel.png' },
   { id: 'MichinoEkiNagai',  name: 'MichinoEkiNagai',    lat: 38.108970970886325, lon: 140.04382939078403, radius: 20, image: './Index/Picture/MichinoEkiNagai.png' },
@@ -174,8 +167,26 @@ function distanceMeter(lat1, lon1, lat2, lon2){
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-function createPlaceEntities(){
-  const scene = document.querySelector('a-scene');
+// 動的に a-scene を作る
+function createScene(){
+  const container = document.getElementById('ar-container');
+  container.innerHTML = `
+    <a-scene
+      id="ar-scene"
+      vr-mode-ui="enabled: false"
+      embedded
+      arjs="sourceType: webcam; debugUIEnabled: false;"
+      renderer="antialias: true; alpha: true"
+      style="width:100%; height:100%;"
+    >
+      <a-camera gps-camera rotation-reader></a-camera>
+    </a-scene>
+  `;
+  return document.getElementById('ar-scene');
+}
+
+// 各地点の画像を追加
+function createPlaceEntities(scene){
   PLACES.forEach(p=>{
     const img=document.createElement('a-image');
     img.setAttribute('id','place-'+p.id);
@@ -222,6 +233,7 @@ function startGPSWatch(){
     hud.textContent='位置情報が取得できません（'+err.message+'）';
   },{enableHighAccuracy:true, maximumAge:0, timeout:5000});
 
+  // 5秒に1回 強制ログ
   setInterval(()=>{
     if(!lastPos) return;
     const now=Date.now();
@@ -247,53 +259,49 @@ function initMap(){
 /* タブ */
 const tabAr=document.getElementById('tab-ar');
 const tabMap=document.getElementById('tab-map');
-const sceneEl=document.getElementById('ar-scene');
+const arContainer=document.getElementById('ar-container');
 const mapView=document.getElementById('map-view');
 
 tabAr.addEventListener('click',()=>{
   tabAr.classList.add('active');
   tabMap.classList.remove('active');
-  sceneEl.style.display='block';
+  arContainer.style.display='block';
   mapView.style.display='none';
 });
 tabMap.addEventListener('click',()=>{
   tabMap.classList.add('active');
   tabAr.classList.remove('active');
-  sceneEl.style.display='none';
+  arContainer.style.display='none';
   mapView.style.display='block';
   if(!map) initMap();
 });
 
-/* 許可ボタンの処理 */
+/* 許可ボタン */
 document.getElementById('startBtn').addEventListener('click', async ()=>{
-  // iOS の場合だけ向きの許可を取る
+  // iOS の向き
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function') {
-    try {
-      const state = await DeviceOrientationEvent.requestPermission();
-      console.log('orientation permission:', state);
-    } catch (e) {
-      console.warn('orientation err', e);
-    }
+    try { await DeviceOrientationEvent.requestPermission(); } catch(e){}
   }
 
-  // ✅ Geolocationもこのクリック内で開始する
+  // 位置もこのクリックで1回起こす
   if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(()=>{}, ()=>{}, {enableHighAccuracy:true});
+    navigator.geolocation.getCurrentPosition(()=>{},()=>{}, {enableHighAccuracy:true});
   }
 
-  // オーバーレイを消してARスタート
-  document.getElementById('permissionOverlay').style.display='none';
-  sceneEl.style.display='block';
-  hud.style.display='block';
-  createPlaceEntities();
-  startGPSWatch(); // ← ここに移動
-});
+  // シーンをここで作る！！
+  const sceneEl = createScene();
+  createPlaceEntities(sceneEl);
 
-/* Android/PCで最初から動かす場合はここで自動開始もできるが、今回はiPhone優先で手動開始 */
+  // 表示・GPS開始
+  document.getElementById('permissionOverlay').style.display='none';
+  arContainer.style.display='block';
+  hud.style.display='block';
+  startGPSWatch();
+});
 </script>
 
-<!-- Google Maps API (あなたのキーに入れ替え) -->
+<!-- Google Maps API（制限をかけて使ってください） -->
 <script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyACib9absBqRW6ErBmjg4_jXcfq-CihVYE"></script>
 </body>
 </html>
