@@ -2,11 +2,433 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GPS WebAR 10地点</title>
-  <meta http-equiv="refresh" content="0;URL=GPSWeBAR_01.html">
+  <title>GPSトリガーAR＋地図ログ（1ページ切替版）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- A-Frame + AR.js -->
+  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.1/aframe/build/aframe-ar.js"></script>
+
+  <!-- デバッグ（いつでも消せます） -->
+  <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+  <script>eruda.init();</script>
+
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: sans-serif; }
+
+    /* タブボタン */
+    #topbar {
+      display: flex;
+      gap: 6px;
+      padding: 6px;
+      background: #222;
+      color: #fff;
+    }
+    #topbar button {
+      background: #444;
+      border: none;
+      color: #fff;
+      padding: 6px 14px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    #topbar button.active {
+      background: #0b72ff;
+    }
+
+    /* AR HUD */
+    #hud {
+      position: fixed;
+      top: 54px; /* タブの下 */
+      left: 8px;
+      z-index: 9999;
+      background: rgba(0,0,0,0.55);
+      color: #fff;
+      font-size: 12px;
+      line-height: 1.4;
+      padding: 6px 8px;
+      border-radius: 4px;
+      max-width: 90vw;
+      white-space: pre-line;
+    }
+
+    /* ビュー共通 */
+    .view {
+      display: none;
+      height: calc(100vh - 46px);
+    }
+    .view.active {
+      display: block;
+    }
+
+    /* 地図ビュー */
+    #mapView {
+      position: relative;
+    }
+    #map {
+      height: 100%;
+      width: 100%;
+    }
+    #logPanel {
+      position: absolute;
+      top: 60px;
+      left: 10px;
+      background: rgba(0,0,0,0.6);
+      color: #fff;
+      padding: 8px;
+      max-height: 60vh;
+      overflow-y: auto;
+      font-size: 12px;
+      border-radius: 4px;
+      min-width: 220px;
+    }
+    #logPanel h2 {
+      font-size: 13px;
+      margin-top: 0;
+    }
+    #logList {
+      list-style: none;
+      padding-left: 0;
+      margin: 0;
+    }
+    #logList li {
+      margin-bottom: 4px;
+      border-bottom: 1px solid rgba(255,255,255,0.15);
+      padding-bottom: 4px;
+    }
+
+    /* センサー許可ボタン */
+    #sensorButton {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: #007bff;
+      color: white;
+      padding: 14px 26px;
+      border: none;
+      border-radius: 8px;
+      font-size: 18px;
+      z-index: 99999;
+      display: none;
+    }
+  </style>
 </head>
 <body>
-  <p>GPS WebAR を読み込んでいます…（数秒後に自動で遷移します）</p>
+
+  <!-- タブバー -->
+  <div id="topbar">
+    <button id="tab-ar" class="active">AR表示</button>
+    <button id="tab-map">地図・ログ</button>
+  </div>
+
+  <!-- AR HUD -->
+  <div id="hud">位置を取得中…</div>
+
+  <!-- ARビュー -->
+  <div id="arView" class="view active">
+    <a-scene
+      vr-mode-ui="enabled: false"
+      embedded
+      arjs="sourceType: webcam; debugUIEnabled: false;"
+      renderer="antialias: true; alpha: true"
+      style="width: 100%; height: 100%;"
+    >
+      <!-- 実機GPSカメラ -->
+      <a-camera gps-camera rotation-reader></a-camera>
+
+      <!-- 位置確認用の箱 -->
+      <a-box position="0 0 -2" depth="0.2" height="0.2" width="0.2" color="#00FFAA"></a-box>
+    </a-scene>
+  </div>
+
+  <!-- 地図ビュー -->
+  <div id="mapView" class="view">
+    <div id="map"></div>
+    <div id="logPanel">
+      <h2>走行ログ（最新）</h2>
+      <ul id="logList">
+        <li>読み込み中…</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- iPhone用: センサー許可ボタン -->
+  <button id="sensorButton">センサーを有効にする</button>
+
+<script>
+/* =========================
+   1. 設定
+   ========================= */
+const LOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw_uhqYjG25qdhdrZ6zCZgjTCKPVypqmTcgKenXBtt4LSBCaoARHYSAYxtMEHijY1rSdA/exec';
+
+/* スプレッドシートを「ウェブに公開」したときのCSV URLに変えてください */
+const SHEET_CSV_URL =
+  'https://docs.google.com/spreadsheets/d/1oq1ottoPDNcqE06opb9AhugWJIFvd2JCyn2u9iDqwu4/gviz/tq?tqx=out:csv&sheet=%E3%83%AD%E3%82%B0';
+
+const PLACES = [
+  { id: 'tas-park',         name: 'TasParkHotel',      lat: 38.10148128126027, lon: 140.0433090680094, radius: 20, image: './Index/Picture/TasParkHotel.png' },
+  { id: 'MichinoEkiNagai',  name: 'MichinoEkiNagai',   lat: 38.108970970886325, lon: 140.04382939078403, radius: 20, image: './Index/Picture/MichinoEkiNagai.png' },
+  { id: 'MNagaiShougakkou', name: 'MNagaiShougakkou',  lat: 38.107796313044474, lon: 140.04269068239356, radius: 15, image: './Index/Picture/MNagaiShougakkou.png' },
+  { id: 'Kozakurakan',      name: 'Kozakurakan',       lat: 38.110963329145335, lon: 140.03632275489852, radius: 15, image: './Index/Picture/Kozakurakan.png' },
+  { id: 'Marudaiougiya',    name: 'Marudaiougiya',     lat: 38.11228246118919,  lon: 140.036198935986,   radius: 15, image: './Index/Picture/Marudaiougiya.png' },
+  { id: 'Nagaisiyakusho',   name: 'Nagaisiyakusho',    lat: 38.1063333593554,   lon: 140.033892868012,   radius: 15, image: './Index/Picture/Nagaisiyakusho.png' },
+  { id: 'NagaiKougyokoukou',name: 'NagaiKougyokoukou', lat: 38.114426209437404, lon: 140.03013087985815, radius: 15, image: './Index/Picture/NagaiKougyokoukou.png' },
+  { id: 'Nagaikoukou',      name: 'Nagaikoukou',       lat: 38.097283861825424, lon: 140.0380452392042,  radius: 15, image: './Index/Picture/Nagaikoukou.png' },
+  { id: 'MinamiNagai',      name: 'MinamiNagai',       lat: 38.09769549394771,  lon: 140.03458623775896, radius: 15, image: './Index/Picture/MinamiNagai.png' },
+  { id: 'Kurunt',           name: 'Kurunt',            lat: 38.10491876278905,  lon: 140.03466346205656, radius: 15, image: './Index/Picture/Kurunt.png' }
+];
+
+const hud = document.getElementById('hud');
+const sensorButton = document.getElementById('sensorButton');
+
+let lastPos = null;
+let lastSendTime = 0;
+
+/* =========================
+   2. 小物
+   ========================= */
+function distanceMeter(lat1, lon1, lat2, lon2) {
+  const R = 6378137;
+  const toRad = x => x * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+function sendLog(payload) {
+  fetch(LOG_ENDPOINT, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).catch(err => console.warn('ログ送信失敗:', err));
+}
+
+/* =========================
+   3. iOSセンサー許可
+   ========================= */
+async function tryRequestSensor() {
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    sensorButton.style.display = 'block';
+  } else {
+    sensorButton.style.display = 'none';
+  }
+}
+sensorButton.addEventListener('click', async () => {
+  try {
+    const state = await DeviceOrientationEvent.requestPermission();
+    if (state === 'granted') {
+      alert('センサーが有効になりました');
+      sensorButton.remove();
+    } else {
+      alert('センサーアクセスが拒否されました');
+    }
+  } catch (e) {
+    alert('センサー許可リクエスト中にエラー: ' + e);
+  }
+});
+
+/* =========================
+   4. A-Frameに画像を配置
+   ========================= */
+function createPlaceEntities() {
+  const scene = document.querySelector('a-scene');
+  PLACES.forEach(place => {
+    const img = document.createElement('a-image');
+    img.setAttribute('id', 'place-' + place.id);
+    img.setAttribute('src', place.image);
+    img.setAttribute('position', '0 1.5 -3');   // カメラから3m前
+    img.setAttribute('width', '5');             // ★2倍
+    img.setAttribute('height', '2.4');          // 比率少し調整
+    img.setAttribute('material', 'side: double;');
+    img.setAttribute('visible', 'false');
+    scene.appendChild(img);
+    place._isInside = false;
+  });
+}
+
+/* =========================
+   5. GPSウォッチ
+   ========================= */
+function startGPSWatch() {
+  if (!navigator.geolocation) {
+    hud.textContent = 'このブラウザではGPSが利用できません';
+    return;
+  }
+
+  navigator.geolocation.watchPosition(
+    (pos) => {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      const accuracy = pos.coords.accuracy;
+      lastPos = { lat, lon, accuracy };
+
+      // HUD表示
+      hud.textContent =
+        `📍 現在のGPS\nlat: ${lat.toFixed(6)}\nlon: ${lon.toFixed(6)}\n精度: ±${accuracy.toFixed(1)}m`;
+
+      // 各地点の表示
+      PLACES.forEach(place => {
+        const dist = distanceMeter(lat, lon, place.lat, place.lon);
+        const entity = document.getElementById('place-' + place.id);
+        const isNear = dist <= place.radius;
+        if (entity) entity.setAttribute('visible', isNear);
+
+        // 出入りログ
+        if (!place._isInside && isNear) {
+          sendLog({ place_id: place.id, event: 'enter', lat, lon });
+        }
+        if (place._isInside && !isNear) {
+          sendLog({ place_id: place.id, event: 'leave', lat, lon });
+        }
+        place._isInside = isNear;
+      });
+    },
+    (err) => {
+      console.warn('GPS取得エラー:', err);
+      hud.textContent = '位置情報が取得できません（' + err.message + '）';
+    },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+  );
+
+  // 5秒ごとに強制送信
+  setInterval(() => {
+    if (!lastPos) return;
+    const now = Date.now();
+    if (now - lastSendTime < 5000) return;
+    sendLog({
+      place_id: 'current',
+      event: 'position',
+      lat: lastPos.lat,
+      lon: lastPos.lon
+    });
+    lastSendTime = now;
+  }, 5000);
+}
+
+/* =========================
+   6. タブ切り替え
+   ========================= */
+const tabAr = document.getElementById('tab-ar');
+const tabMap = document.getElementById('tab-map');
+const arView = document.getElementById('arView');
+const mapView = document.getElementById('mapView');
+
+tabAr.addEventListener('click', () => {
+  tabAr.classList.add('active');
+  tabMap.classList.remove('active');
+  arView.classList.add('active');
+  mapView.classList.remove('active');
+});
+
+tabMap.addEventListener('click', () => {
+  tabMap.classList.add('active');
+  tabAr.classList.remove('active');
+  mapView.classList.add('active');
+  arView.classList.remove('active');
+  // 地図を表示してからリサイズ
+  if (window.__mapInstance) {
+    google.maps.event.trigger(window.__mapInstance, 'resize');
+  }
+});
+
+/* =========================
+   7. 地図表示（CSVから描画）
+   ========================= */
+let map;
+function initMap() {
+  // 初期中心は長井市あたりにしておきます（ログが来たら動きます）
+  map = new google.maps.Map(document.getElementById('map'), {
+    center: { lat: 38.1014, lng: 140.0433 },
+    zoom: 14,
+  });
+  window.__mapInstance = map;
+
+  // 10地点の目標点もマーカーにしておく
+  PLACES.forEach(p => {
+    new google.maps.Marker({
+      map,
+      position: { lat: p.lat, lng: p.lon },
+      title: p.name,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 5,
+        fillColor: '#00f',
+        fillOpacity: 0.8,
+        strokeWeight: 1,
+      }
+    });
+  });
+
+  // シートから定期的に読み込む
+  loadCsvLogs();
+  setInterval(loadCsvLogs, 10000); // 10秒ごと
+}
+
+function loadCsvLogs() {
+  fetch(SHEET_CSV_URL)
+    .then(r => r.text())
+    .then(text => {
+      const rows = text.trim().split('\n');
+      const logList = document.getElementById('logList');
+      logList.innerHTML = '';
+      // 1行目はヘッダー
+      for (let i = 1; i < rows.length; i++) {
+        const cols = rows[i].split(',');
+        const ts = cols[0];
+        const place_id = cols[1];
+        const event = cols[2];
+        const lat = parseFloat(cols[3]);
+        const lon = parseFloat(cols[4]);
+
+        // 一覧に出す
+        const li = document.createElement('li');
+        li.textContent = `${ts} / ${place_id} / ${event} / ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+        logList.appendChild(li);
+
+        // マーカー
+        if (!isNaN(lat) && !isNaN(lon)) {
+          new google.maps.Marker({
+            map,
+            position: { lat, lng: lon },
+            title: `${place_id} (${event})`,
+            icon: {
+              path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+              scale: 4,
+              fillColor: '#ff0',
+              fillOpacity: 0.9,
+              strokeWeight: 1,
+            }
+          });
+        }
+      }
+    })
+    .catch(err => {
+      console.warn('ログシート取得失敗', err);
+      const logList = document.getElementById('logList');
+      logList.innerHTML = '<li>ログ読み込み失敗（シートを「ウェブに公開」しましたか？）</li>';
+    });
+}
+
+/* =========================
+   8. 初期化
+   ========================= */
+window.addEventListener('load', () => {
+  tryRequestSensor();
+  createPlaceEntities();
+  startGPSWatch();
+});
+</script>
+
+<!-- Google Maps JS（YOUR_API_KEY_HERE を差し替えてください） -->
+<script async
+  src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY_HERE&callback=initMap">
+</script>
+
 </body>
 </html>
