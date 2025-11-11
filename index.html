@@ -2,15 +2,12 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>GPSトリガーAR＋地図（3D版）</title>
+  <title>GPSトリガーAR＋地図（画像版に戻した）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- A-Frame + AR.js -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.1/aframe/build/aframe-ar.js"></script>
-  <!-- デバッグ（不要なら消してOK） -->
-  <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-  <script>eruda.init();</script>
 
   <style>
     :root { --tab-h: 50px; }
@@ -20,6 +17,7 @@
       font-family: sans-serif;
       background: #000;
     }
+    /* タブ */
     #tabs {
       position: fixed;
       top: 0;
@@ -39,6 +37,7 @@
     }
     #tabs button.active { background: #333; }
 
+    /* ARシーン */
     a-scene {
       position: fixed !important;
       top: var(--tab-h);
@@ -51,6 +50,7 @@
       display: none;
     }
 
+    /* HUD */
     #hud {
       position: fixed;
       top: calc(var(--tab-h) + 8px);
@@ -67,6 +67,7 @@
       display: none;
     }
 
+    /* マップ */
     #map-view {
       position: fixed;
       top: var(--tab-h);
@@ -78,6 +79,7 @@
     }
     #map { width: 100%; height: 100%; }
 
+    /* 許可ボタンのオーバーレイ */
     #permissionOverlay {
       position: fixed;
       inset: 0;
@@ -104,18 +106,22 @@
 </head>
 <body>
 
+  <!-- 許可オーバーレイ -->
   <div id="permissionOverlay">
     <div>AR表示のために<br>カメラとデバイスの向きの許可が必要です。</div>
     <button id="startBtn">ARを開始する</button>
   </div>
 
+  <!-- タブ -->
   <div id="tabs">
     <button id="tab-ar" class="active">AR表示</button>
     <button id="tab-map">走行マップ</button>
   </div>
 
+  <!-- HUD -->
   <div id="hud">位置を取得中…</div>
 
+  <!-- ARシーン（画像表示版） -->
   <a-scene
     vr-mode-ui="enabled: false"
     embedded
@@ -123,25 +129,17 @@
     renderer="antialias: true; alpha: true"
     id="ar-scene"
   >
-    <a-assets>
-      <audio id="ding" src="https://cdn.aframe.io/basic-guide/audio/backgroundnoise.wav"></audio>
-    </a-assets>
-
-    <!-- ★ここがポイント：完全透明ではなく 0.001 の不透明度で極小オブジェクトを置く -->
-    <a-box position="0 0 -1"
-           depth="0.01" height="0.01" width="0.01"
-           material="color: #ffffff; opacity: 0.001; transparent: true"></a-box>
-
     <a-camera gps-camera rotation-reader></a-camera>
   </a-scene>
 
+  <!-- マップ表示 -->
   <div id="map-view">
     <div id="map"></div>
   </div>
 
 <script>
+/* ====== 1. GASのURL ====== */
 const LOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw_uhqYjG25qdhdrZ6zCZgjTCKPVypqmTcgKenXBtt4LSBCaoARHYSAYxtMEHijY1rSdA/exec';
-
 function sendLog(p){
   fetch(LOG_ENDPOINT,{
     method:'POST',
@@ -151,21 +149,23 @@ function sendLog(p){
   }).catch(e=>console.warn('log fail',e));
 }
 
+/* ====== 2. 10地点の定義（画像に戻した） ====== */
 const PLACES = [
-  { id: 'tas-park',         name: 'TasParkHotel',       lat: 38.10148128126027, lon: 140.0433090680094, radius: 20 },
-  { id: 'MichinoEkiNagai',  name: 'MichinoEkiNagai',    lat: 38.108970970886325, lon: 140.04382939078403, radius: 20 },
-  { id: 'MNagaiShougakkou', name: 'MNagaiShougakkou',   lat: 38.107796313044474, lon: 140.04269068239356, radius: 15 },
-  { id: 'Kozakurakan',      name: 'Kozakurakan',        lat: 38.110963329145335, lon: 140.03632275489852, radius: 15 },
-  { id: 'Marudaiougiya',    name: 'Marudaiougiya',      lat: 38.11228246118919,  lon: 140.036198935986,   radius: 15 },
-  { id: 'Nagaisiyakusho',   name: 'Nagaisiyakusho',     lat: 38.1063333593554,   lon: 140.033892868012,   radius: 15 },
-  { id: 'NagaiKougyokoukou',name: 'NagaiKougyokoukou',  lat: 38.114426209437404, lon: 140.03013087985815, radius: 15 },
-  { id: 'Nagaikoukou',      name: 'Nagaikoukou',        lat: 38.097283861825424, lon: 140.0380452392042,  radius: 15 },
-  { id: 'MinamiNagai',      name: 'MinamiNagai',        lat: 38.09769549394771,  lon: 140.03458623775896, radius: 15 },
-  { id: 'Kurunt',           name: 'Kurunt',             lat: 38.10491876278905,  lon: 140.03466346205656, radius: 15 }
+  { id: 'tas-park',         name: 'TasParkHotel',       lat: 38.10148128126027, lon: 140.0433090680094, radius: 20, image: './Index/Picture/TasParkHotel.png' },
+  { id: 'MichinoEkiNagai',  name: 'MichinoEkiNagai',    lat: 38.108970970886325, lon: 140.04382939078403, radius: 20, image: './Index/Picture/MichinoEkiNagai.png' },
+  { id: 'MNagaiShougakkou', name: 'MNagaiShougakkou',   lat: 38.107796313044474, lon: 140.04269068239356, radius: 15, image: './Index/Picture/MNagaiShougakkou.png' },
+  { id: 'Kozakurakan',      name: 'Kozakurakan',        lat: 38.110963329145335, lon: 140.03632275489852, radius: 15, image: './Index/Picture/Kozakurakan.png' },
+  { id: 'Marudaiougiya',    name: 'Marudaiougiya',      lat: 38.11228246118919,  lon: 140.036198935986,   radius: 15, image: './Index/Picture/Marudaiougiya.png' },
+  { id: 'Nagaisiyakusho',   name: 'Nagaisiyakusho',     lat: 38.1063333593554,   lon: 140.033892868012,   radius: 15, image: './Index/Picture/Nagaisiyakusho.png' },
+  { id: 'NagaiKougyokoukou',name: 'NagaiKougyokoukou',  lat: 38.114426209437404, lon: 140.03013087985815, radius: 15, image: './Index/Picture/NagaiKougyokoukou.png' },
+  { id: 'Nagaikoukou',      name: 'Nagaikoukou',        lat: 38.097283861825424, lon: 140.0380452392042,  radius: 15, image: './Index/Picture/Nagaikoukou.png' },
+  { id: 'MinamiNagai',      name: 'MinamiNagai',        lat: 38.09769549394771,  lon: 140.03458623775896, radius: 15, image: './Index/Picture/MinamiNagai.png' },
+  { id: 'Kurunt',           name: 'Kurunt',             lat: 38.10491876278905,  lon: 140.03466346205656, radius: 15, image: './Index/Picture/Kurunt.png' }
 ];
 
 const hud = document.getElementById('hud');
 
+/* ====== 距離計算 ====== */
 function distanceMeter(lat1, lon1, lat2, lon2){
   const R=6378137, toRad=x=>x*Math.PI/180;
   const dLat=toRad(lat2-lat1);
@@ -174,44 +174,24 @@ function distanceMeter(lat1, lon1, lat2, lon2){
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
+/* ====== 画像エンティティ生成 ====== */
 function createPlaceEntities(){
   const scene = document.querySelector('a-scene');
-
-  PLACES.forEach((p, idx) => {
-    const wrapper = document.createElement('a-entity');
-    wrapper.setAttribute('id', 'place-' + p.id);
-    wrapper.setAttribute('position', '0 1.5 -3');
-    wrapper.setAttribute('visible', 'false');
-    wrapper.setAttribute('scale', '3 3 3');
-
-    const snd = document.createElement('a-sound');
-    snd.setAttribute('id', 'sound-' + p.id);
-    snd.setAttribute('src', '#ding');
-    snd.setAttribute('autoplay', 'false');
-    snd.setAttribute('volume', '2.0');
-    wrapper.appendChild(snd);
-
-    let child;
-    switch(idx){
-      case 0: child = document.createElement('a-box'); child.setAttribute('depth','1'); child.setAttribute('height','1'); child.setAttribute('width','1'); child.setAttribute('color','#ff4444'); break;
-      case 1: child = document.createElement('a-sphere'); child.setAttribute('radius','0.7'); child.setAttribute('color','#448aff'); break;
-      case 2: child = document.createElement('a-cone'); child.setAttribute('radius-bottom','0.7'); child.setAttribute('height','1.2'); child.setAttribute('color','#4caf50'); break;
-      case 3: child = document.createElement('a-cylinder'); child.setAttribute('radius','0.5'); child.setAttribute('height','1.2'); child.setAttribute('color','#ff9800'); break;
-      case 4: child = document.createElement('a-torus'); child.setAttribute('radius','0.8'); child.setAttribute('radius-tubular','0.1'); child.setAttribute('color','#9c27b0'); break;
-      case 5: child = document.createElement('a-tetrahedron'); child.setAttribute('radius','0.9'); child.setAttribute('color','#00bcd4'); break;
-      case 6: child = document.createElement('a-box'); child.setAttribute('width','1.2'); child.setAttribute('height','0.3'); child.setAttribute('depth','0.7'); child.setAttribute('color','#cddc39'); break;
-      case 7: child = document.createElement('a-sphere'); child.setAttribute('radius','0.5'); child.setAttribute('color','#ff6f00'); break;
-      case 8: child = document.createElement('a-cone'); child.setAttribute('radius-bottom','0.5'); child.setAttribute('height','1.4'); child.setAttribute('color','#795548'); break;
-      default: child = document.createElement('a-box'); child.setAttribute('width','1.5'); child.setAttribute('height','0.5'); child.setAttribute('depth','1.5'); child.setAttribute('color','#03a9f4'); break;
-    }
-
-    child.setAttribute('animation','property: rotation; to: 0 360 0; loop: true; dur: 8000; easing: linear');
-    wrapper.appendChild(child);
-    scene.appendChild(wrapper);
+  PLACES.forEach(p=>{
+    const img = document.createElement('a-image');
+    img.setAttribute('id', 'place-'+p.id);
+    img.setAttribute('src', p.image);
+    img.setAttribute('position', '0 1.5 -3');
+    img.setAttribute('width', '4');   // スマホで見えるサイズ
+    img.setAttribute('height','2.5');
+    img.setAttribute('visible', 'false');
+    img.setAttribute('material','side: double;');
+    scene.appendChild(img);
     p._isInside = false;
   });
 }
 
+/* ====== GPS監視 ====== */
 let lastPos=null;
 let lastSentAt=0;
 let map, mapPolyline, mapPath=[];
@@ -226,20 +206,15 @@ function startGPSWatch(){
     hud.textContent=`📍 現在位置\nlat:${lat.toFixed(6)}\nlon:${lon.toFixed(6)}\n精度:±${acc.toFixed(1)}m`;
 
     PLACES.forEach(p=>{
-      const dist=distanceMeter(lat,lon,p.lat,p.lon);
-      const ent=document.getElementById('place-'+p.id);
-      const snd=document.getElementById('sound-'+p.id);
-      const near=dist <= p.radius;
-
+      const dist = distanceMeter(lat,lon,p.lat,p.lon);
+      const ent  = document.getElementById('place-'+p.id);
+      const near = dist <= p.radius;
       if (ent) ent.setAttribute('visible', near);
 
-      if(!p._isInside && near){
+      if (!p._isInside && near){
         sendLog({place_id:p.id,event:'enter',lat,lon});
-        if (snd && snd.components && snd.components.sound) {
-          snd.components.sound.playSound();
-        }
       }
-      if(p._isInside && !near){
+      if (p._isInside && !near){
         sendLog({place_id:p.id,event:'leave',lat,lon});
       }
       p._isInside = near;
@@ -256,6 +231,7 @@ function startGPSWatch(){
     hud.textContent='位置情報が取得できません（'+err.message+'）';
   },{enableHighAccuracy:true, maximumAge:0, timeout:5000});
 
+  // 5秒ごとのログ
   setInterval(()=>{
     if(!lastPos) return;
     const now=Date.now();
@@ -265,6 +241,7 @@ function startGPSWatch(){
   },5000);
 }
 
+/* ====== Googleマップ ====== */
 function initMap(){
   const center = lastPos ? {lat:lastPos.lat,lng:lastPos.lon} : {lat:38.1014,lng:140.0433};
   map = new google.maps.Map(document.getElementById('map'),{
@@ -278,6 +255,7 @@ function initMap(){
   });
 }
 
+/* ====== タブ切り替え ====== */
 const tabAr=document.getElementById('tab-ar');
 const tabMap=document.getElementById('tab-map');
 const sceneEl=document.getElementById('ar-scene');
@@ -297,11 +275,14 @@ tabMap.addEventListener('click',()=>{
   if(!map) initMap();
 });
 
+/* ====== 許可ボタン ====== */
 document.getElementById('startBtn').addEventListener('click', async ()=>{
+  // iOS の向き許可
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function') {
-    try { await DeviceOrientationEvent.requestPermission(); } catch (e) {}
+    try { await DeviceOrientationEvent.requestPermission(); } catch(e){}
   }
+  // geolocation もこのタップの中で一度叩く
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(()=>{}, ()=>{}, {enableHighAccuracy:true});
   }
@@ -309,11 +290,13 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
   document.getElementById('permissionOverlay').style.display='none';
   sceneEl.style.display='block';
   hud.style.display='block';
+
   createPlaceEntities();
   startGPSWatch();
 });
 </script>
 
+<!-- Google Maps API -->
 <script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyACib9absBqRW6ErBmjg4_jXcfq-CihVYE"></script>
 </body>
 </html>
