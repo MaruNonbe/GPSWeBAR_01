@@ -2,202 +2,110 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>GPSトリガーAR（名称＋画像拡大版）</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <!-- A-Frame + AR.js -->
-  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.1/aframe/build/aframe-ar.js"></script>
+  <title>走行ログ地図ビューア</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <style>
-    body { margin:0; overflow:hidden; }
-    #hud {
+    html, body { height: 100%; margin: 0; padding: 0; font-family: sans-serif; }
+    #map { height: 100%; width: 100%; }
+    #panel {
       position: fixed;
-      top: 8px; left: 8px;
-      z-index: 9999;
+      top: 10px; left: 10px;
       background: rgba(0,0,0,0.6);
       color: #fff;
-      font-size: 13px;
-      line-height: 1.5;
-      padding: 8px 10px;
-      border-radius: 5px;
-      white-space: pre-line;
+      padding: 8px 12px;
+      border-radius: 6px;
+      z-index: 9999;
     }
   </style>
+
+  <!-- ✅ Google Maps APIキーを入れてください -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY"></script>
+
+  <!-- ✅ PapaParse（CSVをJSON化） -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
 
-  <div id="hud">位置を取得中…</div>
-
-  <a-scene
-    vr-mode-ui="enabled: false"
-    embedded
-    arjs="sourceType: webcam; debugUIEnabled: false;"
-    renderer="antialias: true; alpha: true">
-    <a-camera gps-camera rotation-reader></a-camera>
-  </a-scene>
+  <div id="panel">🚗 GPSログ地図ビューア</div>
+  <div id="map"></div>
 
 <script>
-/* ========= 1. ログ送信設定 ========= */
-const LOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw_uhqYjG25qdhdrZ6zCZgjTCKPVypqmTcgKenXBtt4LSBCaoARHYSAYxtMEHijY1rSdA/exec';
+/* ========= 1. スプレッドシート公開CSVのURL ========= */
+// Googleシート → [ファイル] > [共有] > [リンクを知っている全員に閲覧権限を付与]
+// その後URL中の "/edit#gid=" を "/gviz/tq?tqx=out:csv&gid=" に変更
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/1oq1ottoPDNcqE06opb9AhugWJIFvd2JCyn2u9iDqwu4/gviz/tq?tqx=out:csv&gid=0';
 
-function sendLog(payload) {
-  fetch(LOG_ENDPOINT, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  }).catch(err => console.warn('ログ送信失敗:', err));
+/* ========= 2. 初期設定 ========= */
+let map;
+let markers = [];
+let pathLine;
+
+/* ========= 3. Google Map初期化 ========= */
+function initMap() {
+  map = new google.maps.Map(document.getElementById('map'), {
+    center: { lat: 38.107, lng: 140.043 },
+    zoom: 14,
+    mapTypeId: 'roadmap'
+  });
+
+  loadCSVData();
+  setInterval(loadCSVData, 5000); // 5秒ごとに更新
 }
 
-/* ========= 2. 登録地点 ========= */
-const PLACES = [
-  { id: 'tas-park',         name: 'タスパークホテル',       lat: 38.10148128126027, lon: 140.0433090680094, radius: 20, image: './Index/Picture/TasParkHotel.png' },
-  { id: 'michinoeki',       name: '道の駅かわのみなと長井', lat: 38.108970970886325, lon: 140.04382939078403, radius: 20, image: './Index/Picture/MichinoEkiNagai.png' },
-  { id: 'nagaishou',        name: '長井小学校',             lat: 38.107796313044474, lon: 140.04269068239356, radius: 15, image: './Index/Picture/MNagaiShougakkou.png' },
-  { id: 'kozakurakan',      name: '小桜館',                 lat: 38.110963329145335, lon: 140.03632275489852, radius: 15, image: './Index/Picture/Kozakurakan.png' },
-  { id: 'marudai',          name: '丸大扇屋',               lat: 38.11228246118919,  lon: 140.036198935986,   radius: 15, image: './Index/Picture/Marudaiougiya.png' },
-  { id: 'cityhall',         name: '長井市役所',             lat: 38.1063333593554,   lon: 140.033892868012,   radius: 15, image: './Index/Picture/Nagaisiyakusho.png' },
-  { id: 'kougyoukou',       name: '長井工業高校',           lat: 38.114426209437404, lon: 140.03013087985815, radius: 15, image: './Index/Picture/NagaiKougyokoukou.png' },
-  { id: 'koukou',           name: '長井高校',               lat: 38.097283861825424, lon: 140.0380452392042,  radius: 15, image: './Index/Picture/Nagaikoukou.png' },
-  { id: 'minaminagai',      name: '南長井駅',               lat: 38.09769549394771,  lon: 140.03458623775896, radius: 15, image: './Index/Picture/MinamiNagai.png' },
-  { id: 'kurunt',           name: 'くるんと',               lat: 38.10491876278905,  lon: 140.03466346205656, radius: 15, image: './Index/Picture/Kurunt.png' }
-];
+/* ========= 4. CSV読み込み・描画 ========= */
+function loadCSVData() {
+  Papa.parse(CSV_URL, {
+    download: true,
+    header: true,
+    complete: function(results) {
+      const rows = results.data.filter(r => r.lat && r.lon);
 
-const hud = document.getElementById('hud');
+      if (rows.length === 0) return;
 
-/* ========= 3. 距離計算 ========= */
-function distanceMeter(lat1, lon1, lat2, lon2) {
-  const R = 6378137;
-  const toRad = x => x * Math.PI / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
-}
+      // 既存マーカー削除
+      markers.forEach(m => m.setMap(null));
+      markers = [];
 
-/* ========= 4. ARエンティティ生成 ========= */
-function createPlaceEntities() {
-  const scene = document.querySelector('a-scene');
-  PLACES.forEach(place => {
-    const container = document.createElement('a-entity');
-    container.setAttribute('gps-entity-place', `latitude: ${place.lat}; longitude: ${place.lon};`);
+      const pathCoords = [];
 
-    // 画像（2倍サイズ）
-    const img = document.createElement('a-image');
-    img.setAttribute('src', place.image);
-    img.setAttribute('width', '5');  // 元の2倍
-    img.setAttribute('height', '2.4');
-    img.setAttribute('position', '0 1.5 0');
-    container.appendChild(img);
+      rows.forEach(row => {
+        const lat = parseFloat(row.lat);
+        const lon = parseFloat(row.lon);
+        const event = row.event || '';
+        const time = row.timestamp || '';
 
-    // テキスト（場所名）
-    const text = document.createElement('a-text');
-    text.setAttribute('value', place.name);
-    text.setAttribute('align', 'center');
-    text.setAttribute('color', '#FFFF00');
-    text.setAttribute('position', '0 2.3 0');
-    text.setAttribute('width', '8');
-    container.appendChild(text);
+        pathCoords.push({ lat, lng: lon });
 
-    container.setAttribute('id', 'place-' + place.id);
-    container.setAttribute('visible', 'false');
-    scene.appendChild(container);
+        // マーカー追加
+        const marker = new google.maps.Marker({
+          position: { lat, lng: lon },
+          map: map,
+          title: `${time}\n${event}`
+        });
+        markers.push(marker);
+      });
 
-    place._isInside = false;
+      // 折れ線で経路表示
+      if (pathLine) pathLine.setMap(null);
+      pathLine = new google.maps.Polyline({
+        path: pathCoords,
+        geodesic: true,
+        strokeColor: '#FF0000',
+        strokeOpacity: 0.8,
+        strokeWeight: 3,
+        map: map
+      });
+
+      // 最新位置へ移動
+      const latest = pathCoords[pathCoords.length - 1];
+      map.panTo(latest);
+    }
   });
 }
 
-/* ========= 5. GPS監視＋HUD更新 ========= */
-let lastPos = null;
-let lastSentAt = 0;
-
-function startGPSWatch() {
-  if (!navigator.geolocation) {
-    hud.textContent = 'このブラウザではGPSが利用できません';
-    return;
-  }
-
-  navigator.geolocation.watchPosition(
-    pos => {
-      const lat = pos.coords.latitude;
-      const lon = pos.coords.longitude;
-      const accuracy = pos.coords.accuracy;
-      lastPos = { lat, lon, accuracy };
-
-      let nearPlace = null;
-      PLACES.forEach(place => {
-        const dist = distanceMeter(lat, lon, place.lat, place.lon);
-        const entity = document.getElementById('place-' + place.id);
-        const isNear = dist <= place.radius;
-        if (entity) entity.setAttribute('visible', isNear);
-        if (isNear) nearPlace = place.name;
-        if (!place._isInside && isNear)
-          sendLog({ place_id: place.id, event: 'enter', lat, lon });
-        if (place._isInside && !isNear)
-          sendLog({ place_id: place.id, event: 'leave', lat, lon });
-        place._isInside = isNear;
-      });
-
-      // HUD更新
-      hud.textContent =
-        `📍 現在のGPS\nlat: ${lat.toFixed(6)}\nlon: ${lon.toFixed(6)}\n精度: ±${accuracy.toFixed(1)}m\n\n` +
-        (nearPlace ? `🎯 現在地: ${nearPlace}` : `（登録地点外）`);
-    },
-    err => {
-      hud.textContent = '位置情報が取得できません（' + err.message + '）';
-      console.warn('GPS取得エラー:', err);
-    },
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
-  );
-
-  // 5秒ごとに位置ログ送信
-  setInterval(() => {
-    if (!lastPos) return;
-    const now = Date.now();
-    if (now - lastSentAt < 5000) return;
-    sendLog({ place_id: 'current', event: 'position', lat: lastPos.lat, lon: lastPos.lon });
-    lastSentAt = now;
-  }, 5000);
-}
-
-/* ========= 6. 初期化 ========= */
-window.addEventListener('load', () => {
-  createPlaceEntities();
-  startGPSWatch();
-});
-</script>
-
-<!-- iPhone用センサー許可ボタン -->
-<button id="sensorButton" style="
-  position: fixed; top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  background: #007bff; color: white;
-  padding: 14px 26px; border: none;
-  border-radius: 8px; font-size: 18px;
-  z-index: 9999;">センサーを有効にする</button>
-
-<script>
-const sensorButton = document.getElementById('sensorButton');
-sensorButton.addEventListener('click', async () => {
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
-    try {
-      const state = await DeviceOrientationEvent.requestPermission();
-      if (state === 'granted') {
-        alert('センサーが有効になりました');
-        sensorButton.remove();
-      } else {
-        alert('センサーアクセスが拒否されました');
-      }
-    } catch (e) {
-      alert('センサー許可リクエスト中にエラー: ' + e);
-    }
-  } else {
-    sensorButton.remove(); // Androidは不要
-  }
-});
+/* ========= 5. 起動 ========= */
+window.onload = initMap;
 </script>
 
 </body>
