@@ -125,13 +125,13 @@
   <div id="hud">位置を取得中…</div>
 
   <!-- ARシーン -->
-  <a-scene
-    vr-mode-ui="enabled: false"
-    embedded
-    arjs="sourceType: webcam; debugUIEnabled: false;"
-    renderer="antialias: true; alpha: true"
-    id="ar-scene"
-  >
+<a-scene
+  vr-mode-ui="enabled: false"
+  arjs="sourceType: webcam; debugUIEnabled: false; videoTexture: true;"
+  renderer="antialias: true; alpha: true"
+  id="ar-scene"
+>
+
     <!-- 音源をここで読み込んでおく（自由に差し替え可） -->
     <a-assets>
       <audio id="ding" src="https://cdn.aframe.io/basic-guide/audio/backgroundnoise.wav"></audio>
