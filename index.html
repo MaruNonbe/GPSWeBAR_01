@@ -276,12 +276,18 @@ document.getElementById('startBtn').addEventListener('click', async ()=>{
       console.warn('orientation err', e);
     }
   }
+
+  // ✅ Geolocationもこのクリック内で開始する
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(()=>{}, ()=>{}, {enableHighAccuracy:true});
+  }
+
   // オーバーレイを消してARスタート
   document.getElementById('permissionOverlay').style.display='none';
   sceneEl.style.display='block';
   hud.style.display='block';
   createPlaceEntities();
-  startGPSWatch();
+  startGPSWatch(); // ← ここに移動
 });
 
 /* Android/PCで最初から動かす場合はここで自動開始もできるが、今回はiPhone優先で手動開始 */
