@@ -17,6 +17,7 @@
       height: 100%;
       margin: 0;
       font-family: sans-serif;
+      background: #000;
     }
     /* タブ */
     #tabs {
@@ -38,7 +39,7 @@
     }
     #tabs button.active { background: #333; }
 
-    /* ARシーンは常に全画面、タブの下から */
+    /* ARシーンはタブの下で固定、最初は非表示 */
     a-scene {
       position: fixed !important;
       top: var(--tab-h);
@@ -48,7 +49,9 @@
       width: 100% !important;
       height: calc(100vh - var(--tab-h)) !important;
       z-index: 1;
+      display: none;   /* ←許可が終わるまで隠す */
     }
+
     /* HUD */
     #hud {
       position: fixed;
@@ -63,7 +66,9 @@
       border-radius: 4px;
       white-space: pre-line;
       max-width: 90vw;
+      display: none;   /* AR表示になってから出す */
     }
+
     /* マップ */
     #map-view {
       position: fixed;
@@ -76,23 +81,38 @@
     }
     #map { width: 100%; height: 100%; }
 
-    /* iPhone用ボタン */
-    #sensorButton {
+    /* 許可ボタン（全画面） */
+    #permissionOverlay {
       position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
+      inset: 0;
+      background: rgba(0,0,0,0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 20000;
+      color: #fff;
+      text-align: center;
+      padding: 20px;
+    }
+    #permissionOverlay button {
+      margin-top: 20px;
       background: #007bff;
+      border: none;
       color: #fff;
       padding: 14px 26px;
-      border: none;
-      border-radius: 8px;
       font-size: 18px;
-      z-index: 20000;
+      border-radius: 8px;
     }
   </style>
 </head>
 <body>
+
+  <!-- 全画面の許可オーバーレイ -->
+  <div id="permissionOverlay">
+    <div>AR表示のために<br>カメラとデバイスの向きの許可が必要です。</div>
+    <button id="startBtn">ARを開始する</button>
+  </div>
 
   <!-- タブ -->
   <div id="tabs">
@@ -103,7 +123,7 @@
   <!-- HUD -->
   <div id="hud">位置を取得中…</div>
 
-  <!-- ★ARシーンはここに直置き★ -->
+  <!-- ARシーン -->
   <a-scene
     vr-mode-ui="enabled: false"
     embedded
@@ -112,7 +132,6 @@
     id="ar-scene"
   >
     <a-camera gps-camera rotation-reader></a-camera>
-    <!-- 画像はJSで足す -->
   </a-scene>
 
   <!-- マップ表示 -->
@@ -120,12 +139,9 @@
     <div id="map"></div>
   </div>
 
-  <!-- iPhone用 -->
-  <button id="sensorButton">センサーを有効にする</button>
-
 <script>
-/* ===== GASエンドポイント ===== */
 const LOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw_uhqYjG25qdhdrZ6zCZgjTCKPVypqmTcgKenXBtt4LSBCaoARHYSAYxtMEHijY1rSdA/exec';
+
 function sendLog(p){
   fetch(LOG_ENDPOINT,{
     method:'POST',
@@ -135,7 +151,6 @@ function sendLog(p){
   }).catch(e=>console.warn('log fail',e));
 }
 
-/* ===== GPS地点 ===== */
 const PLACES = [
   { id: 'tas-park',         name: 'TasParkHotel',       lat: 38.10148128126027, lon: 140.0433090680094, radius: 20, image: './Index/Picture/TasParkHotel.png' },
   { id: 'MichinoEkiNagai',  name: 'MichinoEkiNagai',    lat: 38.108970970886325, lon: 140.04382939078403, radius: 20, image: './Index/Picture/MichinoEkiNagai.png' },
@@ -159,7 +174,6 @@ function distanceMeter(lat1, lon1, lat2, lon2){
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-/* A-Frame用画像を作成（大きめ） */
 function createPlaceEntities(){
   const scene = document.querySelector('a-scene');
   PLACES.forEach(p=>{
@@ -181,10 +195,6 @@ let lastSentAt=0;
 let map, mapPolyline, mapPath=[];
 
 function startGPSWatch(){
-  if(!navigator.geolocation){
-    hud.textContent='このブラウザではGPSが使えません';
-    return;
-  }
   navigator.geolocation.watchPosition(pos=>{
     const lat=pos.coords.latitude;
     const lon=pos.coords.longitude;
@@ -192,18 +202,16 @@ function startGPSWatch(){
     lastPos={lat,lon,acc};
     hud.textContent=`📍 現在位置\nlat:${lat.toFixed(6)}\nlon:${lon.toFixed(6)}\n精度:±${acc.toFixed(1)}m`;
 
-    // AR表示判定
     PLACES.forEach(p=>{
       const dist=distanceMeter(lat,lon,p.lat,p.lon);
       const ent=document.getElementById('place-'+p.id);
-      const near = dist<=p.radius;
+      const near=dist<=p.radius;
       if(ent) ent.setAttribute('visible',near);
       if(!p._isInside && near) sendLog({place_id:p.id,event:'enter',lat,lon});
       if(p._isInside && !near) sendLog({place_id:p.id,event:'leave',lat,lon});
       p._isInside=near;
     });
 
-    // マップ
     if(map){
       const posLatLng={lat, lng:lon};
       mapPath.push(posLatLng);
@@ -214,7 +222,6 @@ function startGPSWatch(){
     hud.textContent='位置情報が取得できません（'+err.message+'）';
   },{enableHighAccuracy:true, maximumAge:0, timeout:5000});
 
-  // 5秒ごとに強制ログ
   setInterval(()=>{
     if(!lastPos) return;
     const now=Date.now();
@@ -224,7 +231,6 @@ function startGPSWatch(){
   },5000);
 }
 
-/* マップ初期化（タブを押したときに初回実行） */
 function initMap(){
   const center = lastPos ? {lat:lastPos.lat,lng:lastPos.lon} : {lat:38.1014,lng:140.0433};
   map = new google.maps.Map(document.getElementById('map'),{
@@ -238,24 +244,7 @@ function initMap(){
   });
 }
 
-/* センサー許可ボタン */
-document.getElementById('sensorButton').addEventListener('click', async ()=>{
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
-    try {
-      const state = await DeviceOrientationEvent.requestPermission();
-      if (state === 'granted') {
-        document.getElementById('sensorButton').remove();
-      } else {
-        alert('センサーが拒否されました');
-      }
-    } catch (e) { alert('エラー: '+e); }
-  } else {
-    document.getElementById('sensorButton').remove();
-  }
-});
-
-/* タブ切り替え */
+/* タブ */
 const tabAr=document.getElementById('tab-ar');
 const tabMap=document.getElementById('tab-map');
 const sceneEl=document.getElementById('ar-scene');
@@ -275,14 +264,30 @@ tabMap.addEventListener('click',()=>{
   if(!map) initMap();
 });
 
-/* 起動 */
-window.addEventListener('load',()=>{
+/* 許可ボタンの処理 */
+document.getElementById('startBtn').addEventListener('click', async ()=>{
+  // iOS の場合だけ向きの許可を取る
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const state = await DeviceOrientationEvent.requestPermission();
+      console.log('orientation permission:', state);
+    } catch (e) {
+      console.warn('orientation err', e);
+    }
+  }
+  // オーバーレイを消してARスタート
+  document.getElementById('permissionOverlay').style.display='none';
+  sceneEl.style.display='block';
+  hud.style.display='block';
   createPlaceEntities();
   startGPSWatch();
 });
+
+/* Android/PCで最初から動かす場合はここで自動開始もできるが、今回はiPhone優先で手動開始 */
 </script>
 
-<!-- Google Maps API（自分のキーに） -->
+<!-- Google Maps API (あなたのキーに入れ替え) -->
 <script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyACib9absBqRW6ErBmjg4_jXcfq-CihVYE"></script>
 </body>
 </html>
