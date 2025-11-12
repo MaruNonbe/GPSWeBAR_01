@@ -1,170 +1,134 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <title>GPS-AR (camera-first)</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <style>
-    html,body{margin:0;height:100%;background:#000;overflow:hidden}
-    #hud{position:fixed;top:10px;left:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:9999;font:14px/1.4 ui-monospace,monospace;color:#fff}
-    .tag{display:inline-block;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px;width:max-content;max-width:100%}
-    #notice{background:#e65100}
-    #gate{position:fixed;inset:0;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;background:#000;color:#fff;z-index:10000}
-    #gate button{font-size:18px;padding:12px 18px;border:0;border-radius:10px}
-  </style>
-
-  <!-- A-Frame / AR.js / look-at は「あとで」読み込む -->
-  <script defer src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
-  <script defer src="https://unpkg.com/aframe-look-at-component@1.0.0/dist/aframe-look-at-component.min.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>GPS-AR 診断起動</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;color:#fff;font:14px/1.5 ui-monospace,monospace}
+  #panel{position:fixed;inset:0;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;padding:16px}
+  button{padding:10px 14px;border:0;border-radius:10px}
+  .ok{color:#0f0}.ng{color:#f66}
+  #log{max-width:900px;width:92%;white-space:pre-wrap;background:#111;padding:10px;border-radius:8px}
+  video{display:none}
+</style>
 </head>
 <body>
 
-  <!-- 権限ゲート（ここでカメラを先に確保） -->
-  <div id="gate">
-    <div style="opacity:.9;text-align:center">AR を開始するにはカメラ権限が必要です。</div>
-    <button id="startBtn">📷 カメラを開始</button>
-    <div id="err" style="max-width:90%;text-align:center;color:#ffbdbd"></div>
+<div id="panel">
+  <div><b>診断パネル</b>（黒画面になる原因を特定します）</div>
+  <div id="camState">📷 カメラ: 未実行</div>
+  <div id="geoState">📍 位置情報: 未実行</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+    <button id="btnCam">📷 カメラ開始</button>
+    <button id="btnGeo">📍 位置情報開始</button>
+    <button id="btnStart" disabled>▶ ARを開始</button>
   </div>
+  <div id="log"></div>
+</div>
 
-  <!-- HUD -->
-  <div id="hud" style="display:none">
-    <div id="latlon" class="tag">lat: - lon: - ±- m</div>
-    <div id="nearest" class="tag">nearest: -</div>
-    <div id="notice" class="tag" style="display:none">方位センサー未取得 → 前方2mピンを表示中</div>
-  </div>
+<video id="probe" playsinline muted></video>
 
-  <!-- A-Frame シーンは後で動的に挿入 -->
-  <div id="sceneHost"></div>
-
+<!-- A-Frame / AR.js（後で動的ロード） -->
 <script>
-/* ---------------- 設定（目的地） ---------------- */
-const POIS = [
-  { name: 'タスパークホテル', lat: 38.101327, lon: 140.043027 }
-];
-/* ------------------------------------------------ */
+const $ = id => document.getElementById(id);
+const camState = $('camState'), geoState = $('geoState'), log = $('log');
+let camOK=false, geoOK=false;
 
-const gate = document.getElementById('gate');
-const startBtn = document.getElementById('startBtn');
-const err = document.getElementById('err');
+function append(msg){ log.textContent += msg + '\n'; }
 
-startBtn.onclick = async () => {
-  try {
-    // 1) 先にカメラ権限を確保（背面カメラ希望）
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' } }, audio: false
-    });
-    // 2) すぐに停止（AR.js が取り直す）
-    stream.getTracks().forEach(t => t.stop());
+// 権限状態の事前チェック（対応していれば）
+(async () => {
+  try{
+    if (navigator.permissions?.query){
+      const c = await navigator.permissions.query({name:'camera'});
+      append('camera permission: ' + c.state);
+      const g = await navigator.permissions.query({name:'geolocation'});
+      append('geolocation permission: ' + g.state);
+    }
+  }catch(_){}
+})();
 
-    // 3) シーンを生成
-    buildScene();
-
-    // 4) ゲートを閉じる
-    gate.style.display = 'none';
-    document.getElementById('hud').style.display = '';
-  } catch(e){
-    err.textContent = 'カメラにアクセスできませんでした。設定→Safari→カメラ を「許可」にしてください。';
+$('btnCam').onclick = async () => {
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ video:{facingMode:{ideal:'environment'}}, audio:false });
+    $('probe').srcObject = stream;
+    await $('probe').play().catch(()=>{});
+    camOK = true;
+    camState.innerHTML = '📷 カメラ: <span class="ok">OK（取得できました）</span>';
+    append('camera: success');
+    // すぐ停止
+    stream.getTracks().forEach(t=>t.stop());
+    checkReady();
+  }catch(e){
+    camOK = false;
+    camState.innerHTML = '📷 カメラ: <span class="ng">NG</span>';
+    append('camera ERROR: ' + (e.name||'') + ' ' + (e.message||''));
+    append('対処: Safariのアドレスバーの「ぁあ」→Webサイトの設定→カメラ=許可 / 設定>Safari>カメラ=許可 / 設定>プライバシーとセキュリティ>位置情報サービス>Safari=このAppの使用中');
   }
 };
 
-function buildScene(){
-  const host = document.getElementById('sceneHost');
+let geoWatchId = null;
+$('btnGeo').onclick = () => {
+  if (!('geolocation' in navigator)) { append('geolocation not supported'); return; }
+  geoWatchId = navigator.geolocation.watchPosition(
+    pos => {
+      const {latitude, longitude, accuracy} = pos.coords;
+      geoOK = true;
+      geoState.innerHTML = `📍 位置情報: <span class="ok">OK</span> lat:${latitude.toFixed(6)} lon:${longitude.toFixed(6)} ±${accuracy.toFixed(1)}m`;
+      checkReady();
+    },
+    err => {
+      geoOK = false;
+      geoState.innerHTML = '📍 位置情報: <span class="ng">NG</span>';
+      append('geolocation ERROR: ' + err.code + ' ' + err.message);
+      append('対処: 設定>プライバシーとセキュリティ>位置情報サービス=オン → Safari=このAppの使用中 / サイト個別の位置許可を「許可」に');
+    },
+    {enableHighAccuracy:true, maximumAge:0, timeout:10000}
+  );
+};
 
-  host.innerHTML = `
-  <a-scene
-    embedded
-    vr-mode-ui="enabled: false"
-    renderer="alpha: true; physicallyCorrectLights: true; colorManagement: true"
-    arjs="sourceType: webcam; cameraPosition: back; videoTexture: true; debugUIEnabled: false;"
-  >
-    <a-entity light="type:ambient; intensity:0.9"></a-entity>
+function checkReady(){
+  $('btnStart').disabled = !(camOK && geoOK);
+}
+
+$('btnStart').onclick = async () => {
+  // 診断パネルを消してAR開始
+  if (geoWatchId!==null) navigator.geolocation.clearWatch(geoWatchId);
+  $('panel').remove();
+
+  // ライブラリ読込
+  await loadScript('https://aframe.io/releases/1.4.1/aframe.min.js');
+  await loadScript('https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js');
+
+  // ARシーンをDOMに追加
+  const scene = document.createElement('a-scene');
+  scene.setAttribute('embedded','');
+  scene.setAttribute('vr-mode-ui','enabled: false');
+  scene.setAttribute('renderer','colorManagement: true; physicallyCorrectLights: true');
+  scene.setAttribute('arjs','sourceType: webcam; gpsMinDistance: 1; debugUIEnabled: false;');
+  scene.innerHTML = `
     <a-camera gps-camera rotation-reader></a-camera>
-    <a-entity id="aheadPin" visible="false">
-      <a-sphere radius="0.25" color="#00bcd4"></a-sphere>
-      <a-ring radius-inner="0.23" radius-outer="0.28" rotation="-90 0 0" color="#00bcd4"></a-ring>
+    <a-entity light="type:ambient; intensity:0.9"></a-entity>
+    <a-entity gps-entity-place="latitude:38.101327; longitude:140.043027">
+      <a-sphere radius="0.6" color="#00bcd4"></a-sphere>
+      <a-ring position="0 0 0" rotation="-90 0 0" radius-inner="0.7" radius-outer="0.9" color="#00bcd4"></a-ring>
     </a-entity>
-  </a-scene>
   `;
+  document.body.appendChild(scene);
 
-  setupLogic();
-}
+  // 成否ログ
+  scene.addEventListener('camera-init',  () => console.log('camera-init'));
+  scene.addEventListener('camera-error', e => console.warn('camera-error', e));
+};
 
-function setupLogic(){
-  const hudLatlon = document.getElementById('latlon');
-  const hudNearest = document.getElementById('nearest');
-  const hudNotice  = document.getElementById('notice');
-  const scene = document.querySelector('a-scene');
-  const camEl = document.querySelector('[gps-camera]');
-
-  // ---- 方位フォールバック（2秒以内にdeviceorientationが来なければ発動）
-  let headingOk = false;
-  let headingTimer = setTimeout(()=>{ if(!headingOk) enableFallback(); }, 2000);
-
-  function onOrient(){
-    headingOk = true;
-    clearTimeout(headingTimer);
-    const ahead = document.getElementById('aheadPin');
-    if (ahead) ahead.setAttribute('visible', false);
-    hudNotice.style.display = 'none';
-    window.removeEventListener('deviceorientation', onOrient);
-  }
-  window.addEventListener('deviceorientation', onOrient);
-
-  function enableFallback(){
-    const ahead = document.getElementById('aheadPin');
-    if (!ahead) return;
-    ahead.setAttribute('visible', true);
-    hudNotice.style.display = '';
-    const cam = document.querySelector('[gps-camera]');
-    const tick = () => {
-      if (!cam.object3D) { requestAnimationFrame(tick); return; }
-      const dir = new THREE.Vector3(0,0,-1).applyQuaternion(cam.object3D.quaternion).normalize();
-      const pos = cam.object3D.position.clone().add(dir.multiplyScalar(2));
-      pos.y = (cam.object3D.position.y||0) + 0.5;
-      ahead.object3D.position.copy(pos);
-      requestAnimationFrame(tick);
-    };
-    tick();
-  }
-
-  // ---- GPS でHUD更新とPOI配置
-  let placed = false;
-  camEl.addEventListener('gps-camera-update-position', (e) => {
-    const {position, accuracy} = e.detail;
-    const {latitude:lat, longitude:lon} = position;
-    hudLatlon.textContent = `lat: ${lat.toFixed(6)}  lon: ${lon.toFixed(6)}  ±${(accuracy||0).toFixed(1)} m`;
-
-    // 最寄り
-    let nearest = {name:'-', d:Infinity};
-    for (const p of POIS){
-      const d = haversine(lat, lon, p.lat, p.lon);
-      if (d < nearest.d) nearest = {name:p.name, d};
-    }
-    hudNearest.textContent = `nearest: ${nearest.name} (${isFinite(nearest.d)?nearest.d.toFixed(1):'-'} m)`;
-
-    if (!placed){
-      placed = true;
-      for (const p of POIS){
-        const e = document.createElement('a-entity');
-        e.setAttribute('gps-entity-place', `latitude: ${p.lat}; longitude: ${p.lon}`);
-        e.setAttribute('look-at', '[gps-camera]');
-        e.innerHTML = `
-          <a-sphere radius="0.6" color="#ff9800"></a-sphere>
-          <a-text value="${p.name}" align="center" position="0 1 0" color="#fff"></a-text>
-        `;
-        scene.appendChild(e);
-      }
-    }
+// 動的スクリプトローダ
+function loadScript(src){
+  return new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src=src; s.onload=res; s.onerror=()=>rej(new Error('load fail '+src));
+    document.head.appendChild(s);
   });
-}
-
-function haversine(lat1, lon1, lat2, lon2){
-  const R=6371000, toRad=d=>d*Math.PI/180;
-  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-  return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 </script>
 </body>
