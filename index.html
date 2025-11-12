@@ -4,7 +4,6 @@
   <meta charset="utf-8" />
   <title>GPS AR (camera preflight)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <!-- iOSでのインライン再生必須 -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <style>
@@ -12,12 +11,11 @@
     #permOverlay{
       position:fixed; inset:0; display:flex; flex-direction:column;
       align-items:center; justify-content:center; gap:16px;
-      background:#000; color:#fff; z-index:9999; text-align:center; padding:24px;
+      background:#000; color:#fff; z-index:99999; text-align:center; padding:24px;
+      font-family: -apple-system, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans JP", sans-serif;
     }
-    #permBtn{
-      font-size:18px; padding:14px 20px; border-radius:10px; border:0; cursor:pointer;
-    }
-    #permMsg{ opacity:.85; line-height:1.6; }
+    #permBtn{ font-size:18px; padding:14px 20px; border-radius:10px; border:0; cursor:pointer; }
+    #permMsg{ opacity:.9; line-height:1.6; }
   </style>
 
   <!-- A-Frame / AR.js（GPS用）-->
@@ -26,7 +24,7 @@
 </head>
 <body>
 
-  <!-- ❶ 権限プリフライトのオーバーレイ -->
+  <!-- 権限プリフライト（1つだけにする） -->
   <div id="permOverlay">
     <div id="permMsg">
       背景が真っ黒／真っ白の場合はカメラ権限が未許可です。<br>
@@ -34,10 +32,11 @@
     </div>
     <button id="permBtn">📷 カメラを開始</button>
   </div>
-  <!-- iOSの仕様回避用：一瞬だけ映像を受けるプレフィライトvideo（非表示）-->
+
+  <!-- iOS安定化のための一時 video（非表示） -->
   <video id="camPreflight" playsinline muted style="display:none"></video>
 
-  <!-- ❷ ARシーン（権限取得後の再読込でAR.jsが起動） -->
+  <!-- ARシーン：権限付与後の再読込で起動 -->
   <a-scene
     vr-mode-ui="enabled: false"
     embedded
@@ -48,43 +47,40 @@
   </a-scene>
 
   <script>
-    const overlay  = document.getElementById('permOverlay');
-    const btn      = document.getElementById('permBtn');
-    const vid      = document.getElementById('camPreflight');
+    const overlay = document.getElementById('permOverlay');
+    const btn     = document.getElementById('permBtn');
+    const vid     = document.getElementById('camPreflight');
 
-    // すでに許可済みならオーバーレイを自動で隠す（iOS 17 以降は "granted"/"denied"/"prompt"）
+    // すでに許可済みならオーバーレイを隠す
     if (navigator.permissions && navigator.permissions.query) {
       navigator.permissions.query({ name: 'camera' })
         .then(st => { if (st.state === 'granted') overlay.style.display = 'none'; })
-        .catch(()=>{}); // 未対応ブラウザは無視
+        .catch(()=>{});
     }
 
     btn.addEventListener('click', async () => {
       try {
-        // ❸ 明示的に環境カメラを要求（ユーザー操作起因）
+        // 環境カメラを要求（ユーザー操作必須）
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' } }, audio: false
         });
 
-        // iOSでは一度 video にアタッチして再生を試みると安定
+        // iOSで一瞬アタッチして再生すると安定
         vid.srcObject = stream;
         await vid.play().catch(()=>{});
 
-        // すぐに解放（AR.js が取り直す）
+        // すぐ停止し、権限付与状態で AR.js を初期化し直す
         stream.getTracks().forEach(t => t.stop());
-
-        // オーバーレイを隠してリロード（最も確実）
         overlay.style.display = 'none';
-        location.reload(); // ← 権限が通った状態でAR.jsが初期化
+        location.reload();
       } catch (e) {
-        // ❹ 失敗時のガイド
-        const m = [
+        alert([
           'カメラにアクセスできませんでした。',
-          'Safariの 共有ボタン(aa) →「ページ設定」→「カメラ」を「許可」に',
-          'または 設定アプリ → Safari → カメラ →「許可」に',
+          'Safariの「ページ設定」→「カメラ：許可」を確認してください。',
+          '設定アプリ → Safari → カメラ でも「許可」にできます。',
           e && e.name ? `(${e.name})` : ''
-        ].join('\n');
-        alert(m);
+        ].join('\n'));
+        console.error(e);
       }
     });
   </script>
