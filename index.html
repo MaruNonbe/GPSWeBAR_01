@@ -2,17 +2,17 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<title>GPS-AR (stable start + debug pin)</title>
+<title>GPS-AR (categories + accuracy trigger)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <style>
   html,body{margin:0;height:100%;background:#000;overflow:hidden}
-  #hud{position:fixed;top:12px;left:12px;right:12px;z-index:9999;
+  #hud{position:fixed;top:12px;left:12px;right:12px;z-index:10;
        font:16px/1.5 ui-monospace,monospace;color:#fff}
   .tag{display:inline-block;background:rgba(0,0,0,.55);
        padding:8px 10px;border-radius:8px}
   #status{margin-top:6px}
   #gate{position:fixed;inset:0;background:#000;display:flex;
-        align-items:center;justify-content:center;z-index:10000}
+        align-items:center;justify-content:center;z-index:20}
   #gate button{font-size:18px;padding:12px 18px;border:0;border-radius:10px}
 </style>
 
@@ -22,14 +22,14 @@
 </head>
 <body>
 
-<!-- HUD -->
+<!-- HUD（上に固定。開始後は gate を必ず非表示にする） -->
 <div id="hud">
   <div id="latlon" class="tag">lat: -  lon: -  ±- m</div><br>
   <div id="dist"   class="tag">distance: - m</div><br>
   <div id="status" class="tag">status: ready</div>
 </div>
 
-<!-- 1タップ開始（許可ダイアログを確実に出す） -->
+<!-- ワンタップ開始（カメラ許可出し・被り対策で開始後に消す） -->
 <div id="gate"><button id="startBtn">📷 ARを開始</button></div>
 
 <!-- A-Frame Scene -->
@@ -37,113 +37,125 @@
   embedded
   vr-mode-ui="enabled: false"
   renderer="colorManagement: true; physicallyCorrectLights: true"
-  arjs="sourceType: webcam; gpsMinDistance: 1; debugUIEnabled: false;">
-  <a-camera gps-camera></a-camera>
+  arjs="sourceType: webcam; gpsMinDistance: 1; debugUIEnabled: false">
+  <a-camera gps-camera rotation-reader></a-camera>
   <a-entity light="type:ambient; intensity:0.9"></a-entity>
 
-  <!-- 出現対象（親）。POIにアンカー。 -->
-  <a-entity id="poiRoot"
+  <!-- ▼ カテゴリ親ノード（ここで可視を切り替える） -->
+  <!-- 学校 -->
+  <a-entity id="cat-school"
     gps-entity-place="latitude:38.101327; longitude:140.043027;"
-    position="0 1 0"              <!-- 地面に埋もれ防止でY=+1m -->
-    visible="false">
-
-    <!-- デバッグ用ピン（常に見える形） -->
-    <a-entity id="debugPin">
+    position="0 1 0" visible="false">
+    <!-- デバッグピン（常に軽い形状） -->
+    <a-entity>
       <a-torus radius="0.6" radius-tubular="0.03" rotation="-90 0 0" color="#16c7d9"></a-torus>
       <a-cylinder height="0.9" radius="0.12" color="#16c7d9" position="0 0.45 0"></a-cylinder>
       <a-sphere radius="0.22" color="#16c7d9" position="0 0.95 0"></a-sphere>
     </a-entity>
+    <!-- （重い）GLBはデフォルトOFF：必要時だけ visible を true に -->
+    <a-entity id="model-school" gltf-model="school.glb" scale="1 1 1" visible="false"></a-entity>
+    <a-entity id="sound-school" sound="src: url(school.mp3); autoplay: false; positional: true"></a-entity>
+  </a-entity>
 
-    <!-- 3Dモデル（最初はOFF） -->
-    <a-entity id="model" gltf-model="model.glb" scale="1 1 1" position="0 0 0" visible="false"></a-entity>
-
-    <!-- 音声（最初はOFF／必要時のみ再生） -->
-    <a-entity id="sound" sound="src: url(sound.mp3); autoplay: false; positional: true"></a-entity>
+  <!-- 公共施設（例：色違いピン） -->
+  <a-entity id="cat-public"
+    gps-entity-place="latitude:38.101900; longitude:140.043500;"
+    position="0 1 0" visible="false">
+    <a-entity>
+      <a-torus radius="0.6" radius-tubular="0.03" rotation="-90 0 0" color="#ff9800"></a-torus>
+      <a-cylinder height="0.9" radius="0.12" color="#ff9800" position="0 0.45 0"></a-cylinder>
+      <a-sphere radius="0.22" color="#ff9800" position="0 0.95 0"></a-sphere>
+    </a-entity>
+    <a-entity id="model-public" gltf-model="public.glb" scale="1 1 1" visible="false"></a-entity>
+    <a-entity id="sound-public" sound="src: url(public.mp3); autoplay: false; positional: true"></a-entity>
   </a-entity>
 </a-scene>
 
 <script>
-  // ===== 設定 =====
-  const POI = { lat: 38.101327, lon: 140.043027 }; // タスパーク入口
-  const TRIGGER_M = 30;                             // 誤差吸収のため10→30m
-  const USE_MODEL = false;                          // ★最初オフ
-  const USE_SOUND = false;                          // ★最初オフ
-  // =================
-
-  const hudLatlon = document.getElementById('latlon');
-  const hudDist   = document.getElementById('dist');
-  const hudStatus = document.getElementById('status');
-  const poiRoot   = document.getElementById('poiRoot');
-  const model     = document.getElementById('model');
-  const soundEnt  = document.getElementById('sound');
-  const camEl     = document.querySelector('[gps-camera]');
-  const scene     = document.getElementById('scene');
-
-  // モデルのロード成否をHUDに表示
-  model.addEventListener('model-loaded', ()=> hudStatus.textContent = 'status: model-loaded');
-  model.addEventListener('model-error', ()=> hudStatus.textContent = 'status: model-error (model.glbを確認)');
-
-  // 開始ボタン：カメラを一度だけ明示取得→即停止→ゲート閉じる
-  document.getElementById('startBtn').onclick = async () => {
-    try {
-      hudStatus.textContent = 'status: requesting camera...';
-      const s = await navigator.mediaDevices.getUserMedia({
-        video:{ facingMode:{ ideal:'environment' } }, audio:false
-      });
-      s.getTracks().forEach(t=>t.stop()); // すぐ停止（AR.jsが再取得）
-      document.getElementById('gate').style.display='none';
-      hudStatus.textContent = 'status: starting camera...';
-    } catch (e) {
-      hudStatus.textContent = 'status: camera denied';
-      alert('カメラにアクセスできませんでした。Safariのサイト設定で「カメラ・位置情報」を許可にしてください。');
-    }
-  };
-
-  // AR.js のビデオが読み込まれたら状態表示
-  scene.addEventListener('arjs-video-loaded', () => {
-    hudStatus.textContent = 'status: camera running';
-  });
-  scene.addEventListener('camera-error', () => {
-    hudStatus.textContent = 'status: camera error';
-  });
-
-  // GPS更新で距離計算＆出現制御
-  camEl.addEventListener('gps-camera-update-position', (e) => {
-    const {position, accuracy} = e.detail || {};
-    if (!position) return;
-
-    const {latitude:lat, longitude:lon} = position;
-    hudLatlon.textContent = `lat:${lat.toFixed(6)}  lon:${lon.toFixed(6)}  ±${(accuracy||0).toFixed(1)} m`;
-
-    const d = haversine(lat, lon, POI.lat, POI.lon);
-    hudDist.textContent = `distance: ${d.toFixed(1)} m`;
-
-    if (d < TRIGGER_M) {
-      // IN range
-      poiRoot.setAttribute('visible', 'true');
-      model.setAttribute('visible', USE_MODEL ? 'true':'false');
-
-      if (USE_SOUND) {
-        if (!soundEnt.components.sound?.isPlaying) soundEnt.components.sound.playSound();
-      } else {
-        if (soundEnt.components.sound?.isPlaying) soundEnt.components.sound.stopSound();
-      }
-      hudStatus.textContent = `status: IN-RANGE (< ${TRIGGER_M} m)`;
-    } else {
-      // OUT range
-      poiRoot.setAttribute('visible', 'false');
-      if (soundEnt.components.sound?.isPlaying) soundEnt.components.sound.stopSound();
-      hudStatus.textContent = 'status: out of range';
-    }
-  });
-
-  // 距離(m)
-  function haversine(lat1, lon1, lat2, lon2){
-    const R=6371000, toRad=d=>d*Math.PI/180;
-    const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
-    const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-    return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+/* ================= 設定 ================= */
+const USE_MODEL = false;  // ❻ GLBは既定OFF（重さ対策）
+const USE_SOUND = false;  // 必要時 true
+// 監視対象カテゴリ（id と ラベル）
+const CATEGORIES = [
+  { id: 'cat-school', label: 'school', modelId: 'model-school', soundId: 'sound-school',
+    // 便宜上：距離表示用にPOI座標も持たせる（gps-entity-place と一致させる）
+    lat: 38.101327, lon: 140.043027
+  },
+  { id: 'cat-public', label: 'public', modelId: 'model-public', soundId: 'sound-public',
+    lat: 38.101900, lon: 140.043500
   }
+];
+/* ======================================= */
+
+const hudLatlon = document.getElementById('latlon');
+const hudDist   = document.getElementById('dist');
+const hudStatus = document.getElementById('status');
+
+// ❹ ゲートの被りを確実に外す
+document.getElementById('startBtn').onclick = () => {
+  document.getElementById('gate').style.display = 'none';
+  hudStatus.textContent = 'status: starting camera...';
+};
+
+// 追加：カメラの開始を検知して状態表示（黒画面切り分け）
+document.querySelector('a-scene').addEventListener('arjs-video-loaded', () => {
+  hudStatus.textContent = 'status: camera running';
+});
+
+// Haversine（m）
+function haversine(lat1, lon1, lat2, lon2){
+  const R=6371000, toRad=d=>d*Math.PI/180;
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+// 位置更新 → 各カテゴリの「親」をまとめて可視切替（❶,❺）
+const camEl = document.querySelector('[gps-camera]');
+camEl.addEventListener('gps-camera-update-position', (e) => {
+  const {position, accuracy} = e.detail || {};
+  const lat = position?.latitude, lon = position?.longitude;
+
+  // HUD
+  if (lat!=null && lon!=null){
+    hudLatlon.textContent = `lat:${lat.toFixed(6)}  lon:${lon.toFixed(6)}  ±${(accuracy||0).toFixed(1)} m`;
+  }
+
+  let nearestD = Infinity;
+
+  CATEGORIES.forEach(cat => {
+    const parent = document.getElementById(cat.id);
+    const model  = document.getElementById(cat.modelId);
+    const sound  = document.getElementById(cat.soundId);
+
+    if (!parent || lat==null || lon==null){ return; }
+
+    const d = haversine(lat, lon, cat.lat, cat.lon);
+    if (isFinite(d) && d < nearestD) nearestD = d;
+
+    // ❷ 精度連動のしきい値：最低25m、精度×1.5を優先
+    const trigger = Math.max((accuracy || 0) * 1.5, 25);
+
+    if (d <= trigger){
+      parent.setAttribute('visible', 'true');           // ← 親で可視化（子は常時visible想定）
+      model?.setAttribute('visible', USE_MODEL ? 'true':'false'); // GLBは設定に従う
+      if (USE_SOUND){
+        if (!sound?.components?.sound?.isPlaying) sound.components.sound.playSound();
+      }else{
+        if (sound?.components?.sound?.isPlaying) sound.components.sound.stopSound();
+      }
+    }else{
+      parent.setAttribute('visible', 'false');          // ← 親ごと非表示
+      if (sound?.components?.sound?.isPlaying) sound.components.sound.stopSound();
+    }
+  });
+
+  hudDist.textContent = `distance: ${isFinite(nearestD) ? nearestD.toFixed(1) : '-'} m`;
+  hudStatus.textContent = 'status: tracking...';
+});
+
+// ❸ Y=0埋没対策：すべてのカテゴリ親は position="0 1 0" をHTML側で設定済み
+//    （必要に応じてここでさらに動的補正も可能）
 </script>
 </body>
 </html>
