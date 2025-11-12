@@ -1,88 +1,70 @@
 <!DOCTYPE html>
 <html lang="ja">
-<head>
-  <meta charset="utf-8" />
-  <title>GPS AR (camera preflight)</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <style>
-    html, body { margin:0; height:100%; overflow:hidden; background:#000; }
-    #permOverlay{
-      position:fixed; inset:0; display:flex; flex-direction:column;
-      align-items:center; justify-content:center; gap:16px;
-      background:#000; color:#fff; z-index:99999; text-align:center; padding:24px;
-      font-family: -apple-system, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans JP", sans-serif;
-    }
-    #permBtn{ font-size:18px; padding:14px 20px; border-radius:10px; border:0; cursor:pointer; }
-    #permMsg{ opacity:.9; line-height:1.6; }
-  </style>
-
-  <!-- A-Frame / AR.js（GPS用）-->
-  <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
-</head>
-<body>
-
-  <!-- 権限プリフライト（1つだけにする） -->
-  <div id="permOverlay">
-    <div id="permMsg">
-      背景が真っ黒／真っ白の場合はカメラ権限が未許可です。<br>
-      下のボタンを押してカメラを開始してください。
-    </div>
-    <button id="permBtn">📷 カメラを開始</button>
-  </div>
-
-  <!-- iOS安定化のための一時 video（非表示） -->
-  <video id="camPreflight" playsinline muted style="display:none"></video>
-
-  <!-- ARシーン：権限付与後の再読込で起動 -->
-  <a-scene
-    vr-mode-ui="enabled: false"
-    embedded
-    renderer="colorManagement: true; physicallyCorrectLights: true"
-    arjs="sourceType: webcam; gpsMinDistance: 1; debugUIEnabled: false;"
-  >
-    <a-camera gps-camera rotation-reader></a-camera>
-  </a-scene>
-
-  <script>
-    const overlay = document.getElementById('permOverlay');
-    const btn     = document.getElementById('permBtn');
-    const vid     = document.getElementById('camPreflight');
-
-    // すでに許可済みならオーバーレイを隠す
-    if (navigator.permissions && navigator.permissions.query) {
-      navigator.permissions.query({ name: 'camera' })
-        .then(st => { if (st.state === 'granted') overlay.style.display = 'none'; })
-        .catch(()=>{});
-    }
-
-    btn.addEventListener('click', async () => {
-      try {
-        // 環境カメラを要求（ユーザー操作必須）
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } }, audio: false
-        });
-
-        // iOSで一瞬アタッチして再生すると安定
-        vid.srcObject = stream;
-        await vid.play().catch(()=>{});
-
-        // すぐ停止し、権限付与状態で AR.js を初期化し直す
-        stream.getTracks().forEach(t => t.stop());
-        overlay.style.display = 'none';
-        location.reload();
-      } catch (e) {
-        alert([
-          'カメラにアクセスできませんでした。',
-          'Safariの「ページ設定」→「カメラ：許可」を確認してください。',
-          '設定アプリ → Safari → カメラ でも「許可」にできます。',
-          e && e.name ? `(${e.name})` : ''
-        ].join('\n'));
-        console.error(e);
+  <head>
+    <meta charset="utf-8" />
+    <title>GPS AR</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <style>
+      body, html { margin: 0; overflow: hidden; }
+      #info {
+        position: fixed;
+        top: 10px; left: 10px;
+        padding: 6px 12px;
+        background: rgba(0,0,0,0.5);
+        color: white;
+        font-family: monospace;
+        font-size: 14px;
+        border-radius: 6px;
+        z-index: 9999;
       }
-    });
-  </script>
-</body>
+    </style>
+
+    <!-- A-Frame / AR.js -->
+    <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
+  </head>
+
+  <body>
+    <div id="info">Loading GPS...</div>
+
+    <a-scene
+      vr-mode-ui="enabled: false"
+      embedded
+      renderer="colorManagement: true; physicallyCorrectLights: true"
+      arjs="sourceType: webcam; gpsMinDistance: 5; debugUIEnabled: false;"
+    >
+      <a-camera gps-camera rotation-reader></a-camera>
+
+      <!-- ★GPSスポット例：道の駅かわのみなと長井 -->
+      <a-entity
+        gps-entity-place="latitude: 38.108993; longitude: 140.043767;"
+        gltf-model="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r146/examples/models/gltf/Flamingo.glb"
+        scale="0.5 0.5 0.5"
+      ></a-entity>
+    </a-scene>
+
+    <script>
+      const info = document.getElementById("info");
+
+      // 現在地を定期的に表示
+      function updatePos(pos) {
+        const lat = pos.coords.latitude.toFixed(6);
+        const lon = pos.coords.longitude.toFixed(6);
+        const acc = pos.coords.accuracy.toFixed(1);
+        info.textContent = `lat: ${lat} lon: ${lon} ±${acc}m`;
+      }
+
+      function errorPos(e) {
+        info.textContent = `位置情報が取得できません (${e.message})`;
+      }
+
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(updatePos, errorPos, { enableHighAccuracy: true });
+      } else {
+        info.textContent = "Geolocation未対応";
+      }
+    </script>
+  </body>
 </html>
