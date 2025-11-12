@@ -1,142 +1,140 @@
 <!DOCTYPE html>
 <html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <title>GPSデバッグ付きAR.js</title>
-    <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/aframe/build/aframe-ar-nft.js"></script>
+<head>
+<meta charset="utf-8" />
+<title>GPS-AR (with debug pin)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden}
+  #hud{position:fixed;top:12px;left:12px;right:12px;z-index:9999;
+       font:16px/1.5 ui-monospace,monospace;color:#fff}
+  .tag{display:inline-block;background:rgba(0,0,0,.55);
+       padding:8px 10px;border-radius:8px}
+  #status{margin-top:6px}
+  #gate{position:fixed;inset:0;background:#000;display:flex;
+        align-items:center;justify-content:center;z-index:10000}
+  #gate button{font-size:18px;padding:12px 18px;border:0;border-radius:10px}
+</style>
 
-    <style>
-      body { margin: 0; overflow: hidden; font-family: monospace; }
-      #hud {
-        position: fixed;
-        top: 10px;
-        left: 10px;
-        background: rgba(0, 0, 0, 0.6);
-        color: white;
-        padding: 10px;
-        border-radius: 8px;
-        font-size: 15px;
-        z-index: 9999;
-        line-height: 1.4em;
-      }
-      #startBtn {
-        position: fixed;
-        bottom: 30px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 12px 24px;
-        font-size: 18px;
-        border-radius: 10px;
-        border: none;
-        background: orange;
-        color: white;
-        z-index: 9999;
-      }
-    </style>
-  </head>
+<!-- A-Frame / AR.js（GPS版） -->
+<script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
+</head>
+<body>
 
-  <body>
-    <!-- HUD表示 -->
-    <div id="hud">
-      <div id="latlon">lat: - lon: - ±-m</div>
-      <div id="nearest">nearest: -</div>
-      <div id="distance">distance: - m</div>
-      <div>10m以内に近づくと3Dと音声が出ます</div>
-    </div>
+<!-- HUD -->
+<div id="hud">
+  <div id="latlon" class="tag">lat: -  lon: -  ±- m</div><br>
+  <div id="dist"   class="tag">distance: - m</div><br>
+  <div id="status" class="tag">status: ready</div>
+</div>
 
-    <button id="startBtn">📡 GPSを開始</button>
+<!-- ワンタップ開始（Safariのカメラ許可を確実に出すため） -->
+<div id="gate"><button id="startBtn">📷 ARを開始</button></div>
 
-    <!-- A-Frame + AR.js -->
-    <a-scene
-      vr-mode-ui="enabled: false"
-      embedded
-      arjs="sourceType: webcam; debugUIEnabled: false;"
-    >
-      <!-- 3Dモデル（非表示で開始） -->
-      <a-entity
-        id="model"
-        gltf-model="model.glb"
-        gps-entity-place="latitude:38.101327; longitude:140.043027;"
-        scale="1 1 1"
-        visible="false"
-      ></a-entity>
+<!-- A-Frame Scene -->
+<a-scene id="scene"
+  embedded
+  vr-mode-ui="enabled: false"
+  renderer="colorManagement: true; physicallyCorrectLights: true"
+  arjs="sourceType: webcam; gpsMinDistance: 1; debugUIEnabled: false;">
+  <a-camera gps-camera rotation-reader></a-camera>
+  <a-entity light="type:ambient; intensity:0.9"></a-entity>
 
-      <!-- 音声（非表示で開始） -->
-      <a-sound id="guide" src="sound.mp3" autoplay="false" position="0 2 0"></a-sound>
+  <!-- 出現対象（親）: POIに固定。これごと可視/不可視を切替 -->
+  <a-entity id="poiRoot"
+    gps-entity-place="latitude:38.101327; longitude:140.043027;"
+    position="0 1 0"  <!-- ← 地面に埋もれ対策でY=+1m -->
+    visible="false">
 
-      <a-camera gps-camera rotation-reader></a-camera>
-    </a-scene>
+    <!-- 1) デバッグ用ピン（必ず見える形状） -->
+    <a-entity id="debugPin">
+      <a-torus radius="0.6" radius-tubular="0.03" rotation="-90 0 0" color="#16c7d9"></a-torus>
+      <a-cylinder height="0.9" radius="0.12" color="#16c7d9" position="0 0.45 0"></a-cylinder>
+      <a-sphere radius="0.22" color="#16c7d9" position="0 0.95 0"></a-sphere>
+    </a-entity>
 
-    <script>
-      const hudLatlon = document.getElementById("latlon");
-      const hudDist = document.getElementById("distance");
-      const model = document.getElementById("model");
-      const sound = document.getElementById("guide");
-      const btn = document.getElementById("startBtn");
+    <!-- 2) 3Dモデル（必要に応じてURLを差し替え） -->
+    <a-entity id="model"
+      gltf-model="model.glb" scale="1 1 1" position="0 0 0" visible="false">
+    </a-entity>
 
-      const poi = { lat: 38.101327, lon: 140.043027 }; // 目的地
-      const R = 6371000; // 地球半径(m)
+    <!-- 3) 音声 -->
+    <a-entity id="sound" sound="src: url(sound.mp3); autoplay: false; positional: true"></a-entity>
+  </a-entity>
+</a-scene>
 
-      function toRad(deg) { return (deg * Math.PI) / 180; }
+<script>
+  // ===== 設定 =====
+  const POI = { lat: 38.101327, lon: 140.043027 }; // タスパ入口
+  const TRIGGER_M = 30;                              // 10m→30m（屋外誤差対策）
+  const USE_MODEL = true;                            // ← モデルを無効にしたい時は false
+  const USE_SOUND = false;                           // ← 音声を無効にしたい時は false
+  // =================
 
-      function calcDist(lat1, lon1, lat2, lon2) {
-        const φ1 = toRad(lat1), φ2 = toRad(lat2);
-        const Δφ = toRad(lat2 - lat1);
-        const Δλ = toRad(lon2 - lon1);
-        const a =
-          Math.sin(Δφ / 2) ** 2 +
-          Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      }
+  const hudLatlon = document.getElementById('latlon');
+  const hudDist   = document.getElementById('dist');
+  const hudStatus = document.getElementById('status');
+  const scene     = document.getElementById('scene');
+  const poiRoot   = document.getElementById('poiRoot');
+  const model     = document.getElementById('model');
+  const soundEnt  = document.getElementById('sound');
 
-      function showErr(err) {
-        const msg = {
-          1: "PERMISSION_DENIED（権限）",
-          2: "POSITION_UNAVAILABLE（測位不能）",
-          3: "TIMEOUT（タイムアウト）",
-        }[err.code] || err.message;
-        hudLatlon.textContent = "GPSエラー: " + msg;
-      }
+  // モデルのロード成否をHUDに表示
+  model.addEventListener('model-loaded', ()=> {
+    hudStatus.textContent = 'status: model-loaded';
+  });
+  model.addEventListener('model-error', (e)=> {
+    hudStatus.textContent = 'status: model-error (URL/GLBを確認)'; 
+  });
 
-      function updateLatLon(pos) {
-        const { latitude, longitude, accuracy } = pos.coords;
-        hudLatlon.textContent =
-          `lat:${latitude.toFixed(6)} lon:${longitude.toFixed(6)} ±${accuracy.toFixed(1)}m`;
-        const dist = calcDist(latitude, longitude, poi.lat, poi.lon);
-        hudDist.textContent = `distance: ${dist.toFixed(1)} m`;
+  // スタートボタン
+  document.getElementById('startBtn').onclick = () => {
+    document.getElementById('gate').style.display='none';
+    hudStatus.textContent = 'status: starting camera...';
+  };
 
-        // 10m以内で出現
- if (dist < TRIGGER_M) {
-  model.setAttribute('visible', 'true');
-  if (!sound.components.sound.isPlaying) sound.components.sound.playSound();
-} else {
-  model.setAttribute('visible', 'false');
-  if (sound.components.sound.isPlaying) sound.components.sound.stopSound();
-}
-      }
+  // GPS更新 → 距離計算&表示制御
+  const camEl = document.querySelector('[gps-camera]');
+  camEl.addEventListener('gps-camera-update-position', (e) => {
+    const {position, accuracy} = e.detail;
+    const {latitude:lat, longitude:lon} = position;
 
-      function startGeo() {
-        if (!("geolocation" in navigator)) {
-          hudLatlon.textContent = "GPS未対応（navigator.geolocationなし）";
-          return;
-        }
-        const opt = { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 };
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            updateLatLon(pos);
-            navigator.geolocation.watchPosition(updateLatLon, showErr, opt);
-          },
-          showErr,
-          opt
-        );
+    hudLatlon.textContent = `lat:${lat.toFixed(6)}  lon:${lon.toFixed(6)}  ±${(accuracy||0).toFixed(1)} m`;
+
+    const d = haversine(lat, lon, POI.lat, POI.lon);
+    hudDist.textContent = `distance: ${d.toFixed(1)} m`;
+
+    if (d < TRIGGER_M) {
+      // 条件IN：親を表示
+      poiRoot.setAttribute('visible', 'true');
+
+      // モデルON/OFF
+      model.setAttribute('visible', USE_MODEL ? 'true':'false');
+
+      // 音声ON/OFF
+      if (USE_SOUND) {
+        if (!soundEnt.components.sound?.isPlaying) soundEnt.components.sound.playSound();
+      } else {
+        if (soundEnt.components.sound?.isPlaying) soundEnt.components.sound.stopSound();
       }
 
-      // ボタンクリックで開始（iOS対策）
-      btn.onclick = () => {
-        startGeo();
-        btn.style.display = "none";
-      };
-    </script>
-  </body>
+      hudStatus.textContent = `status: IN-RANGE (< ${TRIGGER_M} m)`;
+    } else {
+      // 条件OUT：全部オフ
+      poiRoot.setAttribute('visible', 'false');
+      if (soundEnt.components.sound?.isPlaying) soundEnt.components.sound.stopSound();
+      hudStatus.textContent = 'status: out of range';
+    }
+  });
+
+  // 距離計算（m）
+  function haversine(lat1, lon1, lat2, lon2){
+    const R=6371000, toRad=d=>d*Math.PI/180;
+    const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+    const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+    return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  }
+</script>
+</body>
 </html>
