@@ -2,43 +2,33 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
+<title>GPS-AR (stable start + diagnostics)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>GPS-AR Stable (categories, auto-threshold, lazy glb)</title>
 <style>
   html,body{margin:0;height:100%;background:#000;overflow:hidden}
   #hud{position:fixed;top:12px;left:12px;right:12px;z-index:9999;
-       font:16px/1.55 ui-monospace,monospace;color:#fff}
-  .tag{display:inline-block;background:rgba(0,0,0,.55);
-       padding:8px 10px;border-radius:8px;margin-bottom:6px}
-  #gate{position:fixed;inset:0;background:#000;display:flex;
-        align-items:center;justify-content:center;z-index:10000}
+       font:16px/1.5 ui-monospace,monospace;color:#fff}
+  .tag{display:inline-block;background:rgba(0,0,0,.55);padding:8px 10px;border-radius:8px}
+  #status{margin-top:6px;white-space:pre-wrap}
+  #gate{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:10000}
   #gate button{font-size:18px;padding:12px 18px;border:0;border-radius:10px}
 </style>
 
-<!-- ライブラリ（通常CDN → 予備CDNに自動フェイルオーバー） -->
-<script>
-(async()=>{
-  async function loadOne(list){ for(const u of list){
-    try{ await new Promise((ok,ng)=>{const s=document.createElement('script'); s.src=u; s.onload=ok; s.onerror=ng; document.head.appendChild(s);}); return; }
-    catch(_){} } throw new Error('CDN load failed'); }
-  await loadOne(['https://aframe.io/releases/1.4.1/aframe.min.js',
-                 'https://unpkg.com/aframe@1.4.1/dist/aframe.min.js']);
-  await loadOne(['https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js',
-                 'https://unpkg.com/aframe-ar.js@3.3.2/aframe-ar.min.js']);
-})();
-</script>
+<!-- A-Frame / AR.js（GPS） -->
+<script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
 </head>
 <body>
 
 <!-- HUD -->
 <div id="hud">
   <div id="latlon" class="tag">lat: -  lon: -  ±- m</div><br>
-  <div id="nearest" class="tag">nearest: -</div><br>
-  <div id="dist" class="tag">distance: - m</div><br>
+  <div id="near"   class="tag">nearest: -</div><br>
+  <div id="dist"   class="tag">distance: - m</div><br>
   <div id="status" class="tag">status: ready</div>
 </div>
 
-<!-- ワンタップ開始（権限確実化） -->
+<!-- 開始ゲート（ユーザー操作で権限を掴む） -->
 <div id="gate"><button id="startBtn">📷 ARを開始</button></div>
 
 <!-- A-Frame Scene -->
@@ -46,165 +36,109 @@
   embedded
   vr-mode-ui="enabled: false"
   renderer="colorManagement: true; physicallyCorrectLights: true"
-  arjs="sourceType: webcam; gpsMinDistance: 1; debugUIEnabled: false;">
+  arjs="sourceType: webcam; facingMode: environment; debugUIEnabled: false">
   <a-camera gps-camera rotation-reader></a-camera>
   <a-entity light="type:ambient; intensity:0.9"></a-entity>
 
-  <!-- カテゴリ親は常時 visible=true（子の可視切替で事故らない） -->
-  <a-entity id="cat-school" visible="true"></a-entity>
-  <a-entity id="cat-public" visible="true"></a-entity>
-  <a-entity id="cat-hotel"  visible="true"></a-entity>
+  <!-- 親を常時表示（カテゴリ分けする場合も親は visible=true に） -->
+  <a-entity id="poiRoot"
+    gps-entity-place="latitude:38.101327; longitude:140.043027;"
+    position="0 1 0" visible="true">
+
+    <!-- デバッグ用ピン（常に見える形状） -->
+    <a-entity id="debugPin" visible="false">
+      <a-torus radius="0.6" radius-tubular="0.03" rotation="-90 0 0" color="#16c7d9"></a-torus>
+      <a-cylinder height="0.9" radius="0.12" color="#16c7d9" position="0 0.45 0"></a-cylinder>
+      <a-sphere   radius="0.22" color="#16c7d9" position="0 0.95 0"></a-sphere>
+    </a-entity>
+
+    <!-- 3Dモデル（必要ならURL差替え） -->
+    <a-entity id="model" gltf-model="model.glb" scale="1 1 1" position="0 0 0" visible="false"></a-entity>
+
+    <!-- 音声（既定OFF） -->
+    <a-entity id="sound" sound="src: url(sound.mp3); autoplay: false; positional: true"></a-entity>
+  </a-entity>
 </a-scene>
 
 <script>
-/*** 設定 ***/
-const USE_MODEL = false;   // ← まずはfalseで安定運用。必要時にtrueへ
-const USE_SOUND = false;   // ← 必要時にtrue
-// POI定義（必要に応じて追加）
-const POIS = [
-  { id:'tas-entrance', name:'タスパークホテル', lat:38.101327, lon:140.043027,
-    category:'hotel', color:'#16c7d9',
-    modelUrl:'model.glb', soundUrl:'sound.mp3' }
-  // 例:
-  // { id:'nagai-school', name:'長井○○小', lat:38.xxxxx, lon:140.xxxxx, category:'school', color:'#4caf50' }
-];
+/* ===== 設定 ===== */
+const POI = { lat: 38.101327, lon: 140.043027 }; // タスパ入口
+const USE_MODEL = false;  // ← モデルは最初OFF（安定後に true）
+const USE_SOUND = false;  // ← 音は最初OFF（必要時 true）
+/* ================= */
 
 const hudLatlon = document.getElementById('latlon');
-const hudNearest= document.getElementById('nearest');
+const hudNear   = document.getElementById('near');
 const hudDist   = document.getElementById('dist');
 const hudStatus = document.getElementById('status');
-const scene     = document.getElementById('scene');
 
-const catRoot = {
-  school: document.getElementById('cat-school'),
-  public: document.getElementById('cat-public'),
-  hotel : document.getElementById('cat-hotel')
-};
+const scene   = document.getElementById('scene');
+const gate    = document.getElementById('gate');
+const pin     = document.getElementById('debugPin');
+const model   = document.getElementById('model');
+const soundEl = document.getElementById('sound');
+const camEl   = document.querySelector('[gps-camera]');
 
-// 生成したPOIエンティティの参照表
-const poiMap = new Map();
+// 3Dモデルロードログ
+model.addEventListener('model-loaded', ()=> setStatus('model-loaded'));
+model.addEventListener('model-error',  ()=> setStatus('model-error: check GLB URL'));
 
-// POIノードを構築（親に対して可視切替する）
-function buildPOINode(p){
-  const parent = document.createElement('a-entity');
-  parent.setAttribute('id', 'poi-' + p.id);
-  parent.setAttribute('gps-entity-place', `latitude:${p.lat}; longitude:${p.lon}`);
-  parent.setAttribute('position', '0 1 0');              // ← Y+1m（埋没防止）
-  parent.setAttribute('visible', 'false');               // 初期は非表示
-  parent.setAttribute('look-at', '[gps-camera]');
+// AR.js カメライベント
+scene.addEventListener('camera-init',    ()=> setStatus('camera-init'));
+scene.addEventListener('camera-error', e => setStatus('camera-error: ' + (e && e.detail && e.detail.error && e.detail.error.message || 'unknown')));
 
-  // デバッグピン（必ず見える形状）
-  const pin = document.createElement('a-entity');
-  pin.innerHTML = `
-    <a-torus radius="0.6" radius-tubular="0.03" rotation="-90 0 0" color="${p.color||'#ff9800'}"></a-torus>
-    <a-cylinder height="0.9" radius="0.12" color="${p.color||'#ff9800'}" position="0 0.45 0"></a-cylinder>
-    <a-sphere radius="0.22" color="${p.color||'#ff9800'}" position="0 0.95 0"></a-sphere>
-    <a-text value="${p.name}" align="center" position="0 1.35 0" color="#fff"></a-text>
-  `;
-  parent.appendChild(pin);
-
-  // 3Dモデル（遅延ロード用：最初は殻だけ）
-  const mdl = document.createElement('a-entity');
-  mdl.setAttribute('id', 'mdl-'+p.id);
-  mdl.setAttribute('visible', USE_MODEL ? 'true' : 'false');
-  parent.appendChild(mdl);
-
-  // 音（positional）
-  const snd = document.createElement('a-entity');
-  snd.setAttribute('id','snd-'+p.id);
-  if (USE_SOUND && p.soundUrl) {
-    snd.setAttribute('sound', `src: url(${p.soundUrl}); autoplay: false; positional: true`);
-  }
-  parent.appendChild(snd);
-
-  // カテゴリ配下へ
-  (catRoot[p.category]||catRoot.public).appendChild(parent);
-
-  // 参照保存
-  poiMap.set(p.id, {p, parent, mdl, snd, loaded:false});
-}
-
-// すべて構築
-POIS.forEach(buildPOINode);
-
-// スタートボタン：確実にゲートを閉じる
-document.getElementById('startBtn').onclick = async () => {
-  document.getElementById('gate').style.display='none';
-  hudStatus.textContent = 'status: starting camera...';
-  try{
-    // 事前に一度getUserMediaして権限ダイアログを確実に出す（即停止）
-    const s = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
-    s.getTracks().forEach(t=>t.stop());
-  }catch(_){} // 失敗してもAR.js側が改めて要求する
-
-  // 念のためAR.jsソース再起動
-  const sys = scene.systems['arjs'];
-  try{ sys?.arSource?.stop(); }catch(_){}
-  try{ await sys?.arSource?.start(); }catch(_){}
-};
-
-// GPS更新でトリガ判定
-const camEl = document.querySelector('[gps-camera]');
-camEl.addEventListener('gps-camera-update-position', (e)=>{
-  const {position, accuracy} = e.detail || {};
-  if (!position) return;
-
+// GPS更新イベント
+camEl.addEventListener('gps-camera-update-position', (e) => {
+  const { position, accuracy } = e.detail;
   const lat = position.latitude, lon = position.longitude;
-  const acc = (accuracy||0);
-  hudLatlon.textContent = `lat:${lat.toFixed(6)}  lon:${lon.toFixed(6)}  ±${acc.toFixed(1)} m`;
+  hudLatlon.textContent = `lat:${fmt(lat)}  lon:${fmt(lon)}  ±${fmt(accuracy)} m`;
 
-  // しきい値は精度連動（最低25m）
-  const TRIGGER = Math.max(acc*1.5, 25);
+  const d = haversine(lat, lon, POI.lat, POI.lon);
+  hudDist.textContent = `distance: ${d.toFixed(1)} m`;
 
-  // 最寄り＆各POIの表示制御
-  let nearest = {name:'-', d:Infinity};
-  let inCount = 0;
+  const TRIGGER = Math.max((accuracy||20) * 1.5, 25); // しきい値を精度連動＋下限25m
+  hudNear.textContent = 'nearest: ' + (d < TRIGGER ? 'IN' : 'OUT');
 
-  for (const {p, parent, mdl, snd, loaded} of poiMap.values()){
-    const d = haversine(lat, lon, p.lat, p.lon);
-    if (d < nearest.d) nearest = {name:p.name, d};
-
-    const inRange = d < TRIGGER;
-    parent.setAttribute('visible', inRange ? 'true' : 'false');
-
-    if (inRange){
-      inCount++;
-
-      // GLB遅延ロード（初回のみ）
-      if (USE_MODEL && p.modelUrl && !loaded){
-        mdl.setAttribute('gltf-model', p.modelUrl);
-        poiMap.get(p.id).loaded = true;
-      }
-
-      // サウンド
-      if (USE_SOUND && p.soundUrl){
-        const comp = snd.components.sound;
-        if (comp && !comp.isPlaying) comp.playSound();
-      }
-    }else{
-      // 範囲外になれば音を止める
-      const comp = snd.components?.sound;
-      if (comp?.isPlaying) comp.stopSound();
-    }
+  if (d < TRIGGER) {
+    pin.setAttribute('visible', 'true');              // まずピンだけ確実に
+    model.setAttribute('visible', USE_MODEL ? 'true' : 'false');
+    if (USE_SOUND) { if (!soundEl.components.sound?.isPlaying) soundEl.components.sound.playSound(); }
+    setStatus(`IN-RANGE (< ${TRIGGER.toFixed(1)} m)`);
+  } else {
+    pin.setAttribute('visible', 'false');
+    model.setAttribute('visible', 'false');
+    if (soundEl.components.sound?.isPlaying) soundEl.components.sound.stopSound();
+    setStatus('out of range');
   }
-
-  hudNearest.textContent = `nearest: ${isFinite(nearest.d)?nearest.name:'-'}`
-  hudDist.textContent    = `distance: ${isFinite(nearest.d)?nearest.d.toFixed(1):'-'} m`;
-  hudStatus.textContent  = inCount>0 ? `status: IN-RANGE (<= ${TRIGGER.toFixed(1)} m, hit:${inCount})`
-                                     : `status: out of range (<= ${TRIGGER.toFixed(1)} m)`;
 });
 
-// Haversine (m)
+// === スタート：ユーザー操作で一度だけカメラ権限を掴む → 解放 → AR.js ===
+document.getElementById('startBtn').onclick = async () => {
+  try {
+    setStatus('requesting camera (environment)...');
+    const testStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    // 取得成功 → すぐ解放（AR.js に譲る）
+    testStream.getTracks().forEach(t => t.stop());
+    setStatus('permission granted. starting AR.js...');
+  } catch(err) {
+    setStatus('getUserMedia failed: ' + err.name + ' / ' + err.message +
+              '\nSafariのアドレスバー左「aA」→このWebサイトの設定→カメラ/マイク/位置情報を「許可」にしてください。');
+    return; // 権限なければここで終了
+  }
+  // ゲートを閉じる
+  gate.style.display = 'none';
+  // ここからAR.jsがストリームを開始（camera-init/camera-errorで結果が出ます）
+};
+
+// === ユーティリティ ===
+function setStatus(msg){ hudStatus.textContent = 'status: ' + msg; }
+function fmt(v){ return (v==null || isNaN(v)) ? '-' : Number(v).toFixed(1); }
 function haversine(lat1, lon1, lat2, lon2){
   const R=6371000, toRad=d=>d*Math.PI/180;
   const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
   const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
   return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
-
-// カメラ/エラーの見える化（デバッグに便利）
-scene.addEventListener('arjs-video-loaded', ()=> hudStatus.textContent='status: camera started');
-scene.addEventListener('camera-error', e=> hudStatus.textContent='status: camera-error');
 </script>
 </body>
 </html>
