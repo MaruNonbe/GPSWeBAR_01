@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>GPS-AR 手動起動テスト</title>
+  <title>GPS-AR 完全復旧版</title>
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <style>
     html,body{margin:0;height:100%;background:#000;color:#fff;font:14px/1.5 monospace;overflow:hidden;}
@@ -10,12 +10,15 @@
     button{padding:12px 20px;font-size:18px;border-radius:10px;border:0;background:#2196f3;color:#fff;}
     #hud{position:fixed;top:10px;left:10px;z-index:9999}
   </style>
+
+  <!-- A-Frame / AR.js -->
   <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
 </head>
 <body>
 
 <div id="hud">lat:- lon:- ±-m</div>
+
 <div id="startGate">
   <div>📷+📍権限を許可してから「AR開始」を押してください</div>
   <button id="startBtn">AR開始</button>
@@ -24,11 +27,12 @@
 
 <a-scene id="scene" embedded vr-mode-ui="enabled:false"
   renderer="colorManagement:true;physicallyCorrectLights:true"
-  arjs="sourceType:webcam;gpsMinDistance:1;debugUIEnabled:false;">
+  arjs="sourceType: camera; videoTexture: true; gpsMinDistance: 1; debugUIEnabled: false;">
   <a-camera gps-camera rotation-reader></a-camera>
   <a-entity light="type:ambient;intensity:0.9"></a-entity>
   <a-entity id="poi" gps-entity-place="latitude:38.101327; longitude:140.043027">
     <a-sphere color="#ff9800" radius="0.5"></a-sphere>
+    <a-text value="タスパークホテル" align="center" position="0 1 0" color="#fff"></a-text>
   </a-entity>
 </a-scene>
 
@@ -39,12 +43,12 @@ const gate = document.getElementById('startGate');
 
 document.getElementById('startBtn').onclick = async () => {
   try {
-    // カメラ権限を確実に要求
+    // --- カメラ権限 ---
     const stream = await navigator.mediaDevices.getUserMedia({ video:{facingMode:{ideal:'environment'}}, audio:false });
     stream.getTracks().forEach(t=>t.stop());
     msg.textContent = '✅ カメラOK';
 
-    // 位置情報を先にチェック
+    // --- 位置情報権限 ---
     await new Promise((res,rej)=>{
       navigator.geolocation.getCurrentPosition(p=>{
         hud.textContent=`lat:${p.coords.latitude.toFixed(6)} lon:${p.coords.longitude.toFixed(6)} ±${p.coords.accuracy.toFixed(1)}m`;
@@ -56,18 +60,28 @@ document.getElementById('startBtn').onclick = async () => {
       },{enableHighAccuracy:true,timeout:8000});
     });
 
-    // ゲートを閉じてAR開始
-    gate.remove();
-    const scene = document.querySelector('a-scene');
-    scene.style.display = 'block';
+    // --- 方位センサー許可（iOS特有） ---
+    if (window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission) {
+      try {
+        const state = await DeviceOrientationEvent.requestPermission();
+        if (state === 'granted') console.log('orientation ok');
+        else console.warn('orientation not granted');
+      } catch(err) {
+        console.warn('orientation permission error', err);
+      }
+    }
 
-    // カメラ初期化監視
-    scene.addEventListener('camera-init', ()=>console.log('camera-init'));
-    scene.addEventListener('camera-error', e=>{
+    // --- ゲートを閉じる ---
+    gate.remove();
+
+    // --- イベント監視 ---
+    const scene = document.querySelector('a-scene');
+    scene.addEventListener('camera-init', () => console.log('camera-init'));
+    scene.addEventListener('camera-error', e => {
       msg.textContent='❌ カメラエラー:'+e.message;
     });
 
-    // GPS更新時
+    // GPS更新時にHUD更新
     document.querySelector('[gps-camera]').addEventListener('gps-camera-update-position', e=>{
       const {latitude,longitude,accuracy}=e.detail.position;
       hud.textContent=`lat:${latitude.toFixed(6)} lon:${longitude.toFixed(6)} ±${accuracy.toFixed(1)}m`;
