@@ -1,26 +1,92 @@
-<!DOCTYPE html><html><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Camera Test</title>
-<script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
-<style>
-  html,body{height:100%;margin:0;overflow:hidden;background:#000;}
-  a-scene{position:fixed;inset:0}
-  .msg{position:fixed;left:10px;top:10px;padding:6px 8px;background:rgba(0,0,0,.5);color:#fff;border-radius:6px;font:14px -apple-system,BlinkMacSystemFont}
-</style>
-</head><body>
-<div class="msg" id="m">starting camera…</div>
-<a-scene embedded renderer="alpha:true;antialias:true"
-        arjs="sourceType: webcam; videoTexture:true; facingMode: environment; debugUIEnabled:false">
-  <a-camera></a-camera>
-</a-scene>
-<script>
-  // 3秒でカメラ動画要素が無ければ警告
-  setTimeout(()=>{
-    const v=document.querySelector('#arjs-video');
-    const m=document.getElementById('m');
-    if(!v || !v.srcObject){ m.textContent='カメラ未起動：サイトのカメラ権限を許可してください'; }
-    else { m.textContent='カメラ起動中'; }
-  },3000);
-</script>
-</body></html>
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>GPS AR (camera preflight)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <!-- iOSでのインライン再生必須 -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <style>
+    html, body { margin:0; height:100%; overflow:hidden; background:#000; }
+    #permOverlay{
+      position:fixed; inset:0; display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:16px;
+      background:#000; color:#fff; z-index:9999; text-align:center; padding:24px;
+    }
+    #permBtn{
+      font-size:18px; padding:14px 20px; border-radius:10px; border:0; cursor:pointer;
+    }
+    #permMsg{ opacity:.85; line-height:1.6; }
+  </style>
+
+  <!-- A-Frame / AR.js（GPS用）-->
+  <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
+</head>
+<body>
+
+  <!-- ❶ 権限プリフライトのオーバーレイ -->
+  <div id="permOverlay">
+    <div id="permMsg">
+      背景が真っ黒／真っ白の場合はカメラ権限が未許可です。<br>
+      下のボタンを押してカメラを開始してください。
+    </div>
+    <button id="permBtn">📷 カメラを開始</button>
+  </div>
+  <!-- iOSの仕様回避用：一瞬だけ映像を受けるプレフィライトvideo（非表示）-->
+  <video id="camPreflight" playsinline muted style="display:none"></video>
+
+  <!-- ❷ ARシーン（権限取得後の再読込でAR.jsが起動） -->
+  <a-scene
+    vr-mode-ui="enabled: false"
+    embedded
+    renderer="colorManagement: true; physicallyCorrectLights: true"
+    arjs="sourceType: webcam; gpsMinDistance: 1; debugUIEnabled: false;"
+  >
+    <a-camera gps-camera rotation-reader></a-camera>
+  </a-scene>
+
+  <script>
+    const overlay  = document.getElementById('permOverlay');
+    const btn      = document.getElementById('permBtn');
+    const vid      = document.getElementById('camPreflight');
+
+    // すでに許可済みならオーバーレイを自動で隠す（iOS 17 以降は "granted"/"denied"/"prompt"）
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'camera' })
+        .then(st => { if (st.state === 'granted') overlay.style.display = 'none'; })
+        .catch(()=>{}); // 未対応ブラウザは無視
+    }
+
+    btn.addEventListener('click', async () => {
+      try {
+        // ❸ 明示的に環境カメラを要求（ユーザー操作起因）
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } }, audio: false
+        });
+
+        // iOSでは一度 video にアタッチして再生を試みると安定
+        vid.srcObject = stream;
+        await vid.play().catch(()=>{});
+
+        // すぐに解放（AR.js が取り直す）
+        stream.getTracks().forEach(t => t.stop());
+
+        // オーバーレイを隠してリロード（最も確実）
+        overlay.style.display = 'none';
+        location.reload(); // ← 権限が通った状態でAR.jsが初期化
+      } catch (e) {
+        // ❹ 失敗時のガイド
+        const m = [
+          'カメラにアクセスできませんでした。',
+          'Safariの 共有ボタン(aa) →「ページ設定」→「カメラ」を「許可」に',
+          'または 設定アプリ → Safari → カメラ →「許可」に',
+          e && e.name ? `(${e.name})` : ''
+        ].join('\n');
+        alert(m);
+      }
+    });
+  </script>
+</body>
+</html>
