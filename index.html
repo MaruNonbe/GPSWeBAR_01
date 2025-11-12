@@ -2,86 +2,189 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>GPS AR - 権限先取りブート</title>
+  <title>GPS AR (iOS復旧版)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <style>
-    html, body { margin:0; height:100%; background:#000; }
-    #ui { position:fixed; inset:0; display:flex; flex-direction:column; gap:12px;
-          align-items:center; justify-content:center; color:#fff; z-index:99999; }
-    #log { white-space:pre-wrap; text-align:left; max-width:90%; opacity:.9; }
-    button { font-size:18px; padding:12px 18px; border-radius:10px; border:0; }
-    #hud { position:fixed; top:10px; left:10px; z-index:9999; color:#fff;
-           background:rgba(0,0,0,.5); padding:6px 10px; border-radius:6px;
-           font-family:monospace; font-size:14px; display:none; }
+    html,body{margin:0;height:100%;overflow:hidden;background:#000;}
+    #hud{position:fixed;left:12px;top:12px;background:rgba(0,0,0,.5);color:#fff;
+         font-family:monospace;padding:8px 12px;border-radius:8px;z-index:9998}
+    #permOverlay{position:fixed;inset:0;display:flex;flex-direction:column;gap:16px;
+      align-items:center;justify-content:center;background:#000;color:#fff;
+      z-index:9999;text-align:center;padding:24px}
+    #permOverlay button{font-size:18px;padding:12px 18px;border:0;border-radius:10px}
+    #preview{position:fixed;left:8px;bottom:8px;width:160px;height:120px;object-fit:cover;
+      z-index:9999;border-radius:8px;display:none;box-shadow:0 0 0 2px rgba(255,255,255,.3)}
   </style>
-  <!-- A-Frame / AR.js（あとで動的に使うので先に読み込んでOK）-->
+
+  <!-- A-Frame / AR.js（iOS 18 安定版を明示） -->
   <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.4.4/aframe-ar.min.js"></script>
 </head>
 <body>
-  <div id="hud">Loading...</div>
 
-  <!-- 起動UI -->
-  <div id="ui">
-    <div>背景が真っ白／真っ黒の場合は、下のボタンからカメラを開始してください。</div>
-    <button id="startBtn">📷 カメラを開始</button>
-    <pre id="log"></pre>
+  <!-- 位置＆精度表示 -->
+  <div id="hud">lat: - lon: - ±-m</div>
+
+  <!-- 権限プリフライト -->
+  <div id="permOverlay">
+    <div>背景が真っ黒／真っ白の場合はカメラ権限が未許可です。<br>下のボタンを押してください。</div>
+    <button id="permBtn">📷 カメラを開始</button>
+    <div style="opacity:.8;font-size:14px;line-height:1.6">
+      もし映らない場合：Safariの「ページ設定」→ カメラ＝許可／<br>
+      設定アプリ → Safari → カメラ → 許可 をご確認ください。
+    </div>
   </div>
 
+  <!-- 映像が来ているかの目視用サムネ -->
+  <video id="preview" playsinline muted></video>
+
+  <!-- ARシーン -->
+  <a-scene
+    vr-mode-ui="enabled:false"
+    embedded
+    renderer="alpha:true; colorManagement:true; physicallyCorrectLights:true"
+    arjs="sourceType: webcam; videoTexture: true; debugUIEnabled:false; facingMode: environment; gpsMinDistance:5;"
+  >
+    <a-camera gps-camera rotation-reader></a-camera>
+  </a-scene>
+
   <script>
-    const $ = (s)=>document.querySelector(s);
-    const log = (m)=>($('#log').textContent = String(m || ''));
+    // ===== 1) カメラ権限プリフライト =====
+    const overlay = document.getElementById('permOverlay');
+    const btn = document.getElementById('permBtn');
+    const preview = document.getElementById('preview');
 
-    $('#startBtn').addEventListener('click', async () => {
-      try {
-        // 1) ユーザー操作起因でカメラ権限を取得（環境カメラ希望）
+    // 既に許可済みならオーバーレイを外す
+    if (navigator.permissions?.query) {
+      navigator.permissions.query({name:'camera'}).then(s=>{
+        if (s.state==='granted') overlay.style.display='none';
+      }).catch(()=>{});
+    }
+
+    btn.addEventListener('click', async ()=>{
+      try{
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } }, audio: false
+          video:{ facingMode:{ideal:'environment'} }, audio:false
         });
-        // すぐ解放（AR.jsが取り直します）
+        // プレビューで確認
+        preview.srcObject = stream; preview.style.display='block';
+        await preview.play().catch(()=>{});
+        // すぐ解放（AR.jsが取り直す）
         stream.getTracks().forEach(t=>t.stop());
-
-        // 2) UIを隠す
-        $('#ui').style.display = 'none';
-        $('#hud').style.display = 'block';
-
-        // 3) A-Frameシーンを動的に作成（許可取得後に初期化）
-        const scene = document.createElement('a-scene');
-        scene.setAttribute('vr-mode-ui', 'enabled: false');
-        scene.setAttribute('embedded', '');
-        scene.setAttribute('renderer', 'colorManagement: true; physicallyCorrectLights: true');
-        scene.setAttribute('arjs', 'sourceType: webcam; gpsMinDistance: 5; debugUIEnabled: false;');
-
-        const cam = document.createElement('a-camera');
-        cam.setAttribute('gps-camera', '');
-        cam.setAttribute('rotation-reader', '');
-        scene.appendChild(cam);
-
-        // ★テスト用：何か1個だけ（近場でも遠目でもOK）
-        const test = document.createElement('a-sphere');
-        test.setAttribute('gps-entity-place', 'latitude: 38.108993; longitude: 140.043767;'); // 道の駅
-        test.setAttribute('radius', '1');
-        test.setAttribute('color', '#ff9900');
-        scene.appendChild(test);
-
-        document.body.appendChild(scene);
-
-        // 4) 位置HUD
-        if ('geolocation' in navigator) {
-          navigator.geolocation.watchPosition(pos => {
-            $('#hud').textContent =
-              `lat: ${pos.coords.latitude.toFixed(6)}  lon: ${pos.coords.longitude.toFixed(6)}  ±${pos.coords.accuracy.toFixed(1)}m`;
-          }, err => {
-            $('#hud').textContent = '位置取得エラー: ' + err.message;
-          }, { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 });
-        }
-
-      } catch(e) {
-        log(`❌ getUserMedia失敗\nname: ${e.name}\nmessage: ${e.message}\n\nSafariの「ページ設定」→ カメラ: 許可 を確認してください。\n設定 > Safari > カメラ も「許可」にしてください。`);
+        overlay.style.display='none';
+        // 権限が通った状態で再初期化
+        location.reload();
+      }catch(e){
+        alert('カメラ取得に失敗しました: '+(e.name||'')+' '+(e.message||''));
       }
     });
+
+    // ===== 2) 地点データ（色はカテゴリで固定） =====
+    const CAT = {
+      sightseeing: { color:'#FF9500', label:'観光' },
+      public:      { color:'#0A84FF', label:'公共施設' },
+      school:      { color:'#34C759', label:'学校' }
+    };
+    const PLACES = [
+      // 観光
+      { id:'Marudaiougiya', name:'丸大扇屋', lat:38.11228246118919, lon:140.036198935986, radius:60, cat:'sightseeing' },
+      { id:'Kozakurakan',   name:'小桜館',   lat:38.110963329145335, lon:140.03632275489852, radius:60, cat:'sightseeing' },
+      { id:'TasPark',       name:'タスパークホテル', lat:38.10148128126027, lon:140.0433090680094, radius:60, cat:'sightseeing' },
+      // 公共施設
+      { id:'MinamiNagai',   name:'南長井駅', lat:38.09769549394771, lon:140.03458623775896, radius:60, cat:'public' },
+      { id:'MichiNoEki',    name:'道の駅 かわのみなと長井', lat:38.108970970886325, lon:140.04382939078403, radius:60, cat:'public' },
+      { id:'CityHall',      name:'長井市役所', lat:38.1063333593554, lon:140.033892868012, radius:60, cat:'public' },
+      { id:'Kurunt',        name:'クルント', lat:38.10491876278905, lon:140.03466346205656, radius:60, cat:'public' },
+      // 学校
+      { id:'NagaiTechHS',   name:'長井工業高校', lat:38.114426209437404, lon:140.03013087985815, radius:60, cat:'school' },
+      { id:'NagaiHS',       name:'長井高校',     lat:38.097283861825424, lon:140.0380452392042, radius:60, cat:'school' },
+    ];
+
+    // ===== 3) 位置と可視制御（最も近い1件のみ） =====
+    const hud = document.getElementById('hud');
+    const byId = {};
+    function haversine(lat1,lon1,lat2,lon2){
+      const R=6371000, toR=x=>x*Math.PI/180;
+      const dLat=toR(lat2-lat1), dLon=toR(lon2-lon1);
+      const a=Math.sin(dLat/2)**2 + Math.cos(toR(lat1))*Math.cos(toR(lat2))*Math.sin(dLon/2)**2;
+      return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+    }
+
+    function createEntities(){
+      const scene=document.querySelector('a-scene');
+      PLACES.forEach(p=>{
+        const wrap=document.createElement('a-entity');
+        wrap.setAttribute('id','place-'+p.id);
+        wrap.setAttribute('gps-entity-place',`latitude: ${p.lat}; longitude: ${p.lon}`);
+        wrap.setAttribute('visible','false');
+
+        // ラベル
+        const label=document.createElement('a-text');
+        label.setAttribute('value',p.name);
+        label.setAttribute('align','center');
+        label.setAttribute('color','#FFFFFF');
+        label.setAttribute('width','6');
+        label.setAttribute('position','0 1.2 0');
+        // マーカー
+        const ball=document.createElement('a-sphere');
+        const col=CAT[p.cat].color;
+        ball.setAttribute('radius','0.5');
+        ball.setAttribute('color',col);
+        ball.setAttribute('scale','0.4 0.4 0.4');
+        ball.setAttribute('animation','property: rotation; to: 0 360 0; loop: true; dur: 6000; easing: linear');
+
+        wrap.appendChild(label);
+        wrap.appendChild(ball);
+        scene.appendChild(wrap);
+        byId[p.id]={ entity:wrap, inside:false, lastDist:Infinity };
+      });
+    }
+
+    function updateVisibility(lat,lon,acc){
+      hud.textContent=`lat: ${lat.toFixed(6)}  lon: ${lon.toFixed(6)}  ±${(acc||0).toFixed(1)} m`;
+      const visibles=[];
+      PLACES.forEach(p=>{
+        const d=haversine(lat,lon,p.lat,p.lon);
+        const st=byId[p.id];
+        st.lastDist=d;
+        if(d<=p.radius) visibles.push(p);
+
+        // Enter / Leave ログ
+        const isIn=(d<=p.radius);
+        if(isIn && !st.inside){
+          st.inside=true;
+          console.log(`[Enter] ${p.name} (cat:${CAT[p.cat].label}) dist:${d.toFixed(1)}m radius:${p.radius}m`);
+        }else if(!isIn && st.inside){
+          st.inside=false;
+          console.log(`[Leave] ${p.name} (cat:${CAT[p.cat].label}) lastDist:${d.toFixed(1)}m`);
+        }
+      });
+
+      // 最も近い1件だけ表示
+      Object.values(byId).forEach(s=>s.entity.setAttribute('visible','false'));
+      if(visibles.length){
+        visibles.sort((a,b)=>byId[a.id].lastDist - byId[b.id].lastDist);
+        const near=visibles[0];
+        byId[near.id].entity.setAttribute('visible','true');
+      }
+    }
+
+    // 実行
+    createEntities();
+    if('geolocation' in navigator){
+      navigator.geolocation.watchPosition(
+        pos=>{
+          const {latitude,longitude,accuracy}=pos.coords;
+          updateVisibility(latitude,longitude,accuracy);
+        },
+        err=>{ console.warn(err); },
+        { enableHighAccuracy:true, maximumAge:0, timeout:10000 }
+      );
+    }else{
+      hud.textContent='Geolocation が利用できません';
+    }
   </script>
 </body>
 </html>
