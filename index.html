@@ -1,45 +1,210 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>GPS-AR Stable (categories, auto-threshold, lazy glb)</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden}
+  #hud{position:fixed;top:12px;left:12px;right:12px;z-index:9999;
+       font:16px/1.55 ui-monospace,monospace;color:#fff}
+  .tag{display:inline-block;background:rgba(0,0,0,.55);
+       padding:8px 10px;border-radius:8px;margin-bottom:6px}
+  #gate{position:fixed;inset:0;background:#000;display:flex;
+        align-items:center;justify-content:center;z-index:10000}
+  #gate button{font-size:18px;padding:12px 18px;border:0;border-radius:10px}
+</style>
+
+<!-- ライブラリ（通常CDN → 予備CDNに自動フェイルオーバー） -->
 <script>
-// --- 追加パッチ: 2秒で自動リトライ & 手動リトライを必ず出す ---
-(function(){
-  const scene = document.getElementById('scene');
-  let videoRunning = false;
-
-  // AR.js 側から「ビデオが来た」合図
-  scene.addEventListener('arjs-video-loaded', () => {
-    videoRunning = true;
-    document.getElementById('retry')?.style.setProperty('display','none','important');
-    document.getElementById('status').textContent = 'status: camera running';
-  });
-
-  // 2秒待っても来なければリトライUIを必ず表示し、start() を叩く
-  setTimeout(async () => {
-    if (videoRunning) return;
-    const retry = document.getElementById('retry');
-    if (retry) retry.style.setProperty('display','flex','important');
-
-    try {
-      // もう一度だけプレフライト（権限ダイアログを確実に出す）
-      const s = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' } }, audio:false });
-      s.getTracks().forEach(t=>t.stop());
-    } catch(e) {
-      // ここに落ちるのは権限拒否。UI上の案内に任せる
-    }
-
-    // AR.js のソースを明示再起動
-    const sys = scene.systems['arjs'];
-    try { sys?.arSource?.stop(); } catch(_) {}
-    try { await sys?.arSource?.start(); } catch(_) {}
-    document.getElementById('status').textContent = 'status: retrying camera…';
-  }, 2000);
-
-  // 手動リトライ（ボタンがある場合）
-  document.getElementById('retryBtn')?.addEventListener('click', async ()=>{
-    const retry = document.getElementById('retry');
-    if (retry) retry.style.display = 'none';
-    const sys = scene.systems['arjs'];
-    try { sys?.arSource?.stop(); } catch(_) {}
-    try { await sys?.arSource?.start(); } catch(_) {}
-    document.getElementById('status').textContent = 'status: retrying camera…';
-  });
+(async()=>{
+  async function loadOne(list){ for(const u of list){
+    try{ await new Promise((ok,ng)=>{const s=document.createElement('script'); s.src=u; s.onload=ok; s.onerror=ng; document.head.appendChild(s);}); return; }
+    catch(_){} } throw new Error('CDN load failed'); }
+  await loadOne(['https://aframe.io/releases/1.4.1/aframe.min.js',
+                 'https://unpkg.com/aframe@1.4.1/dist/aframe.min.js']);
+  await loadOne(['https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js',
+                 'https://unpkg.com/aframe-ar.js@3.3.2/aframe-ar.min.js']);
 })();
 </script>
+</head>
+<body>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="latlon" class="tag">lat: -  lon: -  ±- m</div><br>
+  <div id="nearest" class="tag">nearest: -</div><br>
+  <div id="dist" class="tag">distance: - m</div><br>
+  <div id="status" class="tag">status: ready</div>
+</div>
+
+<!-- ワンタップ開始（権限確実化） -->
+<div id="gate"><button id="startBtn">📷 ARを開始</button></div>
+
+<!-- A-Frame Scene -->
+<a-scene id="scene"
+  embedded
+  vr-mode-ui="enabled: false"
+  renderer="colorManagement: true; physicallyCorrectLights: true"
+  arjs="sourceType: webcam; gpsMinDistance: 1; debugUIEnabled: false;">
+  <a-camera gps-camera rotation-reader></a-camera>
+  <a-entity light="type:ambient; intensity:0.9"></a-entity>
+
+  <!-- カテゴリ親は常時 visible=true（子の可視切替で事故らない） -->
+  <a-entity id="cat-school" visible="true"></a-entity>
+  <a-entity id="cat-public" visible="true"></a-entity>
+  <a-entity id="cat-hotel"  visible="true"></a-entity>
+</a-scene>
+
+<script>
+/*** 設定 ***/
+const USE_MODEL = false;   // ← まずはfalseで安定運用。必要時にtrueへ
+const USE_SOUND = false;   // ← 必要時にtrue
+// POI定義（必要に応じて追加）
+const POIS = [
+  { id:'tas-entrance', name:'タスパークホテル', lat:38.101327, lon:140.043027,
+    category:'hotel', color:'#16c7d9',
+    modelUrl:'model.glb', soundUrl:'sound.mp3' }
+  // 例:
+  // { id:'nagai-school', name:'長井○○小', lat:38.xxxxx, lon:140.xxxxx, category:'school', color:'#4caf50' }
+];
+
+const hudLatlon = document.getElementById('latlon');
+const hudNearest= document.getElementById('nearest');
+const hudDist   = document.getElementById('dist');
+const hudStatus = document.getElementById('status');
+const scene     = document.getElementById('scene');
+
+const catRoot = {
+  school: document.getElementById('cat-school'),
+  public: document.getElementById('cat-public'),
+  hotel : document.getElementById('cat-hotel')
+};
+
+// 生成したPOIエンティティの参照表
+const poiMap = new Map();
+
+// POIノードを構築（親に対して可視切替する）
+function buildPOINode(p){
+  const parent = document.createElement('a-entity');
+  parent.setAttribute('id', 'poi-' + p.id);
+  parent.setAttribute('gps-entity-place', `latitude:${p.lat}; longitude:${p.lon}`);
+  parent.setAttribute('position', '0 1 0');              // ← Y+1m（埋没防止）
+  parent.setAttribute('visible', 'false');               // 初期は非表示
+  parent.setAttribute('look-at', '[gps-camera]');
+
+  // デバッグピン（必ず見える形状）
+  const pin = document.createElement('a-entity');
+  pin.innerHTML = `
+    <a-torus radius="0.6" radius-tubular="0.03" rotation="-90 0 0" color="${p.color||'#ff9800'}"></a-torus>
+    <a-cylinder height="0.9" radius="0.12" color="${p.color||'#ff9800'}" position="0 0.45 0"></a-cylinder>
+    <a-sphere radius="0.22" color="${p.color||'#ff9800'}" position="0 0.95 0"></a-sphere>
+    <a-text value="${p.name}" align="center" position="0 1.35 0" color="#fff"></a-text>
+  `;
+  parent.appendChild(pin);
+
+  // 3Dモデル（遅延ロード用：最初は殻だけ）
+  const mdl = document.createElement('a-entity');
+  mdl.setAttribute('id', 'mdl-'+p.id);
+  mdl.setAttribute('visible', USE_MODEL ? 'true' : 'false');
+  parent.appendChild(mdl);
+
+  // 音（positional）
+  const snd = document.createElement('a-entity');
+  snd.setAttribute('id','snd-'+p.id);
+  if (USE_SOUND && p.soundUrl) {
+    snd.setAttribute('sound', `src: url(${p.soundUrl}); autoplay: false; positional: true`);
+  }
+  parent.appendChild(snd);
+
+  // カテゴリ配下へ
+  (catRoot[p.category]||catRoot.public).appendChild(parent);
+
+  // 参照保存
+  poiMap.set(p.id, {p, parent, mdl, snd, loaded:false});
+}
+
+// すべて構築
+POIS.forEach(buildPOINode);
+
+// スタートボタン：確実にゲートを閉じる
+document.getElementById('startBtn').onclick = async () => {
+  document.getElementById('gate').style.display='none';
+  hudStatus.textContent = 'status: starting camera...';
+  try{
+    // 事前に一度getUserMediaして権限ダイアログを確実に出す（即停止）
+    const s = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
+    s.getTracks().forEach(t=>t.stop());
+  }catch(_){} // 失敗してもAR.js側が改めて要求する
+
+  // 念のためAR.jsソース再起動
+  const sys = scene.systems['arjs'];
+  try{ sys?.arSource?.stop(); }catch(_){}
+  try{ await sys?.arSource?.start(); }catch(_){}
+};
+
+// GPS更新でトリガ判定
+const camEl = document.querySelector('[gps-camera]');
+camEl.addEventListener('gps-camera-update-position', (e)=>{
+  const {position, accuracy} = e.detail || {};
+  if (!position) return;
+
+  const lat = position.latitude, lon = position.longitude;
+  const acc = (accuracy||0);
+  hudLatlon.textContent = `lat:${lat.toFixed(6)}  lon:${lon.toFixed(6)}  ±${acc.toFixed(1)} m`;
+
+  // しきい値は精度連動（最低25m）
+  const TRIGGER = Math.max(acc*1.5, 25);
+
+  // 最寄り＆各POIの表示制御
+  let nearest = {name:'-', d:Infinity};
+  let inCount = 0;
+
+  for (const {p, parent, mdl, snd, loaded} of poiMap.values()){
+    const d = haversine(lat, lon, p.lat, p.lon);
+    if (d < nearest.d) nearest = {name:p.name, d};
+
+    const inRange = d < TRIGGER;
+    parent.setAttribute('visible', inRange ? 'true' : 'false');
+
+    if (inRange){
+      inCount++;
+
+      // GLB遅延ロード（初回のみ）
+      if (USE_MODEL && p.modelUrl && !loaded){
+        mdl.setAttribute('gltf-model', p.modelUrl);
+        poiMap.get(p.id).loaded = true;
+      }
+
+      // サウンド
+      if (USE_SOUND && p.soundUrl){
+        const comp = snd.components.sound;
+        if (comp && !comp.isPlaying) comp.playSound();
+      }
+    }else{
+      // 範囲外になれば音を止める
+      const comp = snd.components?.sound;
+      if (comp?.isPlaying) comp.stopSound();
+    }
+  }
+
+  hudNearest.textContent = `nearest: ${isFinite(nearest.d)?nearest.name:'-'}`
+  hudDist.textContent    = `distance: ${isFinite(nearest.d)?nearest.d.toFixed(1):'-'} m`;
+  hudStatus.textContent  = inCount>0 ? `status: IN-RANGE (<= ${TRIGGER.toFixed(1)} m, hit:${inCount})`
+                                     : `status: out of range (<= ${TRIGGER.toFixed(1)} m)`;
+});
+
+// Haversine (m)
+function haversine(lat1, lon1, lat2, lon2){
+  const R=6371000, toRad=d=>d*Math.PI/180;
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+// カメラ/エラーの見える化（デバッグに便利）
+scene.addEventListener('arjs-video-loaded', ()=> hudStatus.textContent='status: camera started');
+scene.addEventListener('camera-error', e=> hudStatus.textContent='status: camera-error');
+</script>
+</body>
+</html>
