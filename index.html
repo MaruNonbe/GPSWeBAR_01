@@ -1,97 +1,146 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="utf-8">
-<title>GPS-AR / 自前カメラ合成版</title>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<style>
-  html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#fff;font:14px/1.5 ui-monospace,monospace}
-  /* 背景カメラ（画面全面） */
-  #cam{position:fixed;inset:0;object-fit:cover;width:100%;height:100%;z-index:0;background:#000}
-  /* A-Frameを上に重ねる（透明描画） */
-  a-scene{position:fixed;inset:0;z-index:1}
-  /* HUD */
-  #hud{position:fixed;top:10px;left:10px;z-index:2;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px}
-  /* 最初の許可ゲート */
-  #gate{position:fixed;inset:0;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;background:#000;z-index:3}
-  button{padding:12px 18px;font-size:18px;border:0;border-radius:10px;background:#2196f3;color:#fff}
-</style>
+  <meta charset="utf-8" />
+  <title>GPS-AR (3D + 音声 + 距離で出現)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <style>
+    html,body{margin:0;height:100%;background:#000;overflow:hidden}
+    #hud{position:fixed;top:10px;left:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:9999;font:14px/1.4 ui-monospace,monospace;color:#fff}
+    .tag{display:inline-block;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px;width:max-content;max-width:100%}
+    #audioGate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.9);z-index:10000}
+    #audioGate button{font-size:18px;padding:12px 18px;border:0;border-radius:12px}
+  </style>
 
-<!-- A-Frame + AR.js（GPS） -->
-<script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
+  <!-- A-Frame / AR.js（GPS） -->
+  <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
 </head>
 <body>
 
-<!-- 背景カメラ（自前で getUserMedia を流す） -->
-<video id="cam" playsinline autoplay muted></video>
+  <!-- HUD -->
+  <div id="hud">
+    <div id="latlon"   class="tag">lat: -  lon: -  ±- m</div>
+    <div id="nearest"  class="tag">nearest: -</div>
+    <div id="distTag"  class="tag">distance: - m</div>
+    <div id="hint"     class="tag">10 m以内に近づくと3Dと音声が出ます</div>
+  </div>
 
-<!-- HUD -->
-<div id="hud">lat:- lon:- ±- m</div>
+  <!-- iOSの自動再生対策（最初にタップしてAudioContextを解放） -->
+  <div id="audioGate">
+    <button id="audioBtn">🔊 音声を有効にしてAR開始</button>
+  </div>
 
-<!-- 許可ゲート -->
-<div id="gate">
-  <div style="opacity:.8">📷カメラ・📍位置情報を許可して「開始」を押してください</div>
-  <button id="start">開始</button>
-  <div id="err" style="color:#f66"></div>
-</div>
+  <!-- A-Frame Scene -->
+  <a-scene
+    embedded
+    vr-mode-ui="enabled: false"
+    renderer="colorManagement: true; physicallyCorrectLights: true"
+    arjs="sourceType: webcam; gpsMinDistance: 1; debugUIEnabled: false;"
+  >
+    <!-- カメラ（GPSで位置・デバイス方位で向き） -->
+    <a-camera gps-camera rotation-reader></a-camera>
 
-<!-- A-Frame（透明描画 / AR.jsは videoTexture を無効化） -->
-<a-scene
-  embedded
-  renderer="alpha:true;colorManagement:true;physicallyCorrectLights:true"
-  arjs="sourceType: webcam; videoTexture: false; gpsMinDistance:1; debugUIEnabled:false">
-  <a-camera gps-camera rotation-reader></a-camera>
-  <a-entity light="type:ambient;intensity:0.9"></a-entity>
-  <!-- 目的地（例：タスパークホテル） -->
-  <a-entity gps-entity-place="latitude:38.101327; longitude:140.043027">
-    <a-sphere color="#ff9800" radius="0.5"></a-sphere>
-    <a-text value="タスパークホテル" align="center" position="0 1 0" color="#fff"></a-text>
-  </a-entity>
-</a-scene>
+    <!-- 環境光＆やや強めの平行光（モデルを見やすく） -->
+    <a-entity light="type:ambient; intensity:0.9"></a-entity>
+    <a-entity light="type:directional; intensity:0.6" position="1 2 1"></a-entity>
+
+    <!-- ▼ POI（最初は非表示）。JSで座標/可視/音声制御します -->
+    <a-entity id="poi"
+              visible="false"
+              look-at="[gps-camera]">
+//      <!-- 3Dモデル（差し替えOK） -->
+//      <a-entity id="model"
+//                gltf-model="model.glb"
+//                scale="1 1 1"
+//                position="0 0 0"
+//                crossorigin="anonymous">
+//      </a-entity>
+//
+//      <!-- 音声ガイド（差し替えOK） -->
+//      <a-sound id="voice"
+//               src="sound.mp3"
+//               autoplay="false"
+//               loop="false"
+//               position="0 2 0">
+//      </a-sound>
+    </a-entity>
+
+  </a-scene>
 
 <script>
-const hud = document.getElementById('hud');
-const gate = document.getElementById('gate');
-const err  = document.getElementById('err');
-const video= document.getElementById('cam');
-
-document.getElementById('start').onclick = async () => {
-  try {
-    // 1) カメラ映像を自前で開始（背面優先）
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:{ideal:'environment'}}, audio:false
-    });
-    video.srcObject = stream;
-
-    // 2) 位置情報（1回取ってHUD更新）
-    await new Promise((res, rej)=>{
-      navigator.geolocation.getCurrentPosition(p=>{
-        const c=p.coords;
-        hud.textContent=`lat:${c.latitude.toFixed(6)}  lon:${c.longitude.toFixed(6)}  ±${c.accuracy.toFixed(1)} m`;
-        res();
-      }, e=>rej(e), {enableHighAccuracy:true, timeout:8000});
-    });
-
-    // 3) 方位センサー（iOS手動許可）
-    if (window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission) {
-      try { await DeviceOrientationEvent.requestPermission(); } catch(_){}
-    }
-
-    // 4) ゲートを閉じる
-    gate.remove();
-
-    // 5) GPS更新時にHUDをライブ更新
-    document.querySelector('[gps-camera]')
-      .addEventListener('gps-camera-update-position', e=>{
-        const {latitude,longitude,accuracy} = e.detail.position;
-        hud.textContent=`lat:${latitude.toFixed(6)}  lon:${longitude.toFixed(6)}  ±${accuracy.toFixed(1)} m`;
-      });
-
-  } catch(e){
-    err.textContent = '許可/起動エラー: ' + (e.message || e.name || e);
-  }
+/* ========= 設定 ========= */
+const POI = {
+  name: 'タスパークホテル',
+  lat:  38.101327,
+  lon: 140.043027
 };
+const SHOW_DIST = 10;   // 何メートル以内で表示＆音声再生するか
+/* ======================= */
+
+const hudLatlon = document.getElementById('latlon');
+const hudNearest= document.getElementById('nearest');
+const distTag   = document.getElementById('distTag');
+
+const scene = document.querySelector('a-scene');
+const camEl = document.querySelector('[gps-camera]');
+const poiEl = document.getElementById('poi');
+const voice = document.getElementById('voice');
+
+/* Haversine距離(m) */
+function dist(lat1, lon1, lat2, lon2){
+  const R=6371000; const toRad=d=>d*Math.PI/180;
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+/* iOSの音声再生ゲート（最初のタップでAudioContextを開く） */
+document.getElementById('audioBtn').addEventListener('click', async () => {
+  try{
+    const ctx = AFRAME.utils.audioContext || new (window.AudioContext||window.webkitAudioContext)();
+    if (ctx.state === 'suspended') await ctx.resume();
+  }catch(_){}
+  document.getElementById('audioGate').style.display='none';
+});
+
+/* POIエンティティにGPS座標をセット */
+poiEl.setAttribute('gps-entity-place', `latitude: ${POI.lat}; longitude: ${POI.lon}`);
+
+/* GPS更新イベントでHUD・距離・可視＆音声を制御 */
+let wasVisible = false;
+let wasPlayed  = false;
+
+camEl.addEventListener('gps-camera-update-position', (e) => {
+  const {position, accuracy} = e.detail; // {latitude, longitude}, accuracy
+  const lat = position.latitude;
+  const lon = position.longitude;
+
+  // HUD更新
+  hudLatlon.textContent = `lat:${lat.toFixed(6)}  lon:${lon.toFixed(6)}  ±${(accuracy||0).toFixed(1)} m`;
+  hudNearest.textContent = `nearest: ${POI.name}`;
+
+  // POIまでの距離
+  const d = dist(lat, lon, POI.lat, POI.lon);
+  distTag.textContent = `distance: ${d.toFixed(1)} m`;
+
+  // 距離で出現/非表示
+  const inside = d <= SHOW_DIST;
+  poiEl.setAttribute('visible', inside);
+
+  // 音声：入った瞬間に一回だけ再生、出たら停止
+  if (inside && !wasPlayed) {
+    voice.components.sound.stopSound(); // 念のため停止→
+    voice.components.sound.playSound(); // 再生
+    wasPlayed = true;
+  }
+  if (!inside && wasVisible) {
+    voice.components.sound.stopSound();
+    wasPlayed = false;
+  }
+
+  wasVisible = inside;
+});
 </script>
 </body>
 </html>
