@@ -1,70 +1,87 @@
 <!DOCTYPE html>
 <html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <title>GPS AR</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <style>
-      body, html { margin: 0; overflow: hidden; }
-      #info {
-        position: fixed;
-        top: 10px; left: 10px;
-        padding: 6px 12px;
-        background: rgba(0,0,0,0.5);
-        color: white;
-        font-family: monospace;
-        font-size: 14px;
-        border-radius: 6px;
-        z-index: 9999;
+<head>
+  <meta charset="utf-8" />
+  <title>GPS AR - 権限先取りブート</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <style>
+    html, body { margin:0; height:100%; background:#000; }
+    #ui { position:fixed; inset:0; display:flex; flex-direction:column; gap:12px;
+          align-items:center; justify-content:center; color:#fff; z-index:99999; }
+    #log { white-space:pre-wrap; text-align:left; max-width:90%; opacity:.9; }
+    button { font-size:18px; padding:12px 18px; border-radius:10px; border:0; }
+    #hud { position:fixed; top:10px; left:10px; z-index:9999; color:#fff;
+           background:rgba(0,0,0,.5); padding:6px 10px; border-radius:6px;
+           font-family:monospace; font-size:14px; display:none; }
+  </style>
+  <!-- A-Frame / AR.js（あとで動的に使うので先に読み込んでOK）-->
+  <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
+</head>
+<body>
+  <div id="hud">Loading...</div>
+
+  <!-- 起動UI -->
+  <div id="ui">
+    <div>背景が真っ白／真っ黒の場合は、下のボタンからカメラを開始してください。</div>
+    <button id="startBtn">📷 カメラを開始</button>
+    <pre id="log"></pre>
+  </div>
+
+  <script>
+    const $ = (s)=>document.querySelector(s);
+    const log = (m)=>($('#log').textContent = String(m || ''));
+
+    $('#startBtn').addEventListener('click', async () => {
+      try {
+        // 1) ユーザー操作起因でカメラ権限を取得（環境カメラ希望）
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } }, audio: false
+        });
+        // すぐ解放（AR.jsが取り直します）
+        stream.getTracks().forEach(t=>t.stop());
+
+        // 2) UIを隠す
+        $('#ui').style.display = 'none';
+        $('#hud').style.display = 'block';
+
+        // 3) A-Frameシーンを動的に作成（許可取得後に初期化）
+        const scene = document.createElement('a-scene');
+        scene.setAttribute('vr-mode-ui', 'enabled: false');
+        scene.setAttribute('embedded', '');
+        scene.setAttribute('renderer', 'colorManagement: true; physicallyCorrectLights: true');
+        scene.setAttribute('arjs', 'sourceType: webcam; gpsMinDistance: 5; debugUIEnabled: false;');
+
+        const cam = document.createElement('a-camera');
+        cam.setAttribute('gps-camera', '');
+        cam.setAttribute('rotation-reader', '');
+        scene.appendChild(cam);
+
+        // ★テスト用：何か1個だけ（近場でも遠目でもOK）
+        const test = document.createElement('a-sphere');
+        test.setAttribute('gps-entity-place', 'latitude: 38.108993; longitude: 140.043767;'); // 道の駅
+        test.setAttribute('radius', '1');
+        test.setAttribute('color', '#ff9900');
+        scene.appendChild(test);
+
+        document.body.appendChild(scene);
+
+        // 4) 位置HUD
+        if ('geolocation' in navigator) {
+          navigator.geolocation.watchPosition(pos => {
+            $('#hud').textContent =
+              `lat: ${pos.coords.latitude.toFixed(6)}  lon: ${pos.coords.longitude.toFixed(6)}  ±${pos.coords.accuracy.toFixed(1)}m`;
+          }, err => {
+            $('#hud').textContent = '位置取得エラー: ' + err.message;
+          }, { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 });
+        }
+
+      } catch(e) {
+        log(`❌ getUserMedia失敗\nname: ${e.name}\nmessage: ${e.message}\n\nSafariの「ページ設定」→ カメラ: 許可 を確認してください。\n設定 > Safari > カメラ も「許可」にしてください。`);
       }
-    </style>
-
-    <!-- A-Frame / AR.js -->
-    <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
-  </head>
-
-  <body>
-    <div id="info">Loading GPS...</div>
-
-    <a-scene
-      vr-mode-ui="enabled: false"
-      embedded
-      renderer="colorManagement: true; physicallyCorrectLights: true"
-      arjs="sourceType: webcam; gpsMinDistance: 5; debugUIEnabled: false;"
-    >
-      <a-camera gps-camera rotation-reader></a-camera>
-
-      <!-- ★GPSスポット例：道の駅かわのみなと長井 -->
-      <a-entity
-        gps-entity-place="latitude: 38.108993; longitude: 140.043767;"
-        gltf-model="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r146/examples/models/gltf/Flamingo.glb"
-        scale="0.5 0.5 0.5"
-      ></a-entity>
-    </a-scene>
-
-    <script>
-      const info = document.getElementById("info");
-
-      // 現在地を定期的に表示
-      function updatePos(pos) {
-        const lat = pos.coords.latitude.toFixed(6);
-        const lon = pos.coords.longitude.toFixed(6);
-        const acc = pos.coords.accuracy.toFixed(1);
-        info.textContent = `lat: ${lat} lon: ${lon} ±${acc}m`;
-      }
-
-      function errorPos(e) {
-        info.textContent = `位置情報が取得できません (${e.message})`;
-      }
-
-      if (navigator.geolocation) {
-        navigator.geolocation.watchPosition(updatePos, errorPos, { enableHighAccuracy: true });
-      } else {
-        info.textContent = "Geolocation未対応";
-      }
-    </script>
-  </body>
+    });
+  </script>
+</body>
 </html>
