@@ -2,144 +2,164 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>GPS AR (Nearest one with TestPin)</title>
+  <title>GPS-AR failsafe</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <style>html,body{margin:0;height:100%;overflow:hidden;background:#000}</style>
+  <style>
+    html,body{margin:0;height:100%;background:#000;overflow:hidden}
+    #hud{position:fixed;top:10px;left:10px;right:10px;display:flex;flex-direction:column;gap:6px;z-index:9999;font:14px/1.4 ui-monospace,monospace;color:#fff}
+    .tag{display:inline-block;background:rgba(0,0,0,.55);padding:6px 10px;border-radius:8px;width:max-content;max-width:100%}
+    #notice{background:#e65100}
+    #btn{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:9999;padding:10px 14px;border:0;border-radius:10px}
+  </style>
+
+  <!-- A-Frame / AR.js（GPS） -->
   <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
 </head>
 <body>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="latlon" class="tag">lat: - lon: - ±- m</div>
+    <div id="nearest" class="tag">nearest: -</div>
+    <div id="notice" class="tag" style="display:none">方位センサー未取得 → フォールバックで「前方2mピン」を表示中</div>
+  </div>
+
+  <!-- A-Frame Scene -->
   <a-scene
-    vr-mode-ui="enabled:false"
     embedded
-    renderer="colorManagement:true; physicallyCorrectLights:true"
-    arjs="sourceType:webcam; videoTexture:true; gpsMinDistance:1; debugUIEnabled:false;"
+    vr-mode-ui="enabled: false"
+    renderer="colorManagement: true; physicallyCorrectLights: true"
+    arjs="sourceType: webcam; gpsMinDistance: 1; debugUIEnabled: false;"
   >
-    <!-- 位置表示（そのまま） -->
-    <a-entity id="hud" position="0 0 -2">
-      <a-text id="gpsInfo" value="" color="#ddd" width="2.5" position="-0.9 1.2 0"></a-text>
-    </a-entity>
-
-    <!-- ★常に見えるテストピン（カメラの正面2m・高さ1m）-->
-    <a-entity id="testPinParent" position="0 1 -2" rotation="0 0 0">
-      <a-cylinder height="0.3" radius="0.05" color="#00E5FF"></a-cylinder>
-      <a-sphere radius="0.08" position="0 0.2 0" color="#00E5FF"></a-sphere>
-      <a-ring radius-inner="0.18" radius-outer="0.2" rotation="-90 0 0" position="0 -0.15 0" color="#00E5FF"></a-ring>
-    </a-entity>
-
-    <!-- カメラ -->
+    <!-- カメラ（位置はGPS、向きはデバイス方位。方位が取れない時はそのまま）-->
     <a-camera gps-camera rotation-reader></a-camera>
+
+    <!-- ほんのり環境光 -->
+    <a-entity light="type:ambient; intensity:0.9"></a-entity>
+
+    <!-- ▼ デバッグ：方位が死んだ時でも“前方2m/高さ0.5m”に必ず見えるピン -->
+    <a-entity id="aheadPin" visible="false">
+      <a-sphere radius="0.25" color="#ff9800" position="0 0 0"></a-sphere>
+    </a-entity>
+
   </a-scene>
 
+  <button id="btn">再読込</button>
+
   <script>
-  // ===== スポット定義（カテゴリ別カラー付き） =====
-  const C = {
-    sightseeing: '#FFB300', // 観光：黄土
-    public:      '#4CAF50', // 公共：緑
-    school:      '#2962FF'  // 学校：青
-  };
-  const PLACES = [
-    // 観光
-    { id:'Marudaiougiya', name:'丸大扇屋',  lat:38.11228246118919,  lon:140.036198935986,   radius:60, color:C.sightseeing },
-    { id:'Kozakurakan',   name:'小桜館',    lat:38.110963329145335, lon:140.03632275489852, radius:60, color:C.sightseeing },
-    { id:'TasPark',       name:'タスパークホテル', lat:38.10148128126027, lon:140.0433090680094, radius:60, color:C.sightseeing },
-    // 公共施設
-    { id:'MinamiNagai',   name:'南長井駅',  lat:38.09769549394771,  lon:140.03458623775896, radius:60, color:C.public },
-    { id:'MichiNoEki',    name:'道の駅 かわのみなと長井', lat:38.108970970886325, lon:140.04382939078403, radius:60, color:C.public },
-    { id:'CityHall',      name:'長井市役所',lat:38.1063333593554,   lon:140.033892868012,   radius:60, color:C.public },
-    { id:'Kurunt',        name:'クルント',  lat:38.10491876278905,  lon:140.03466346205656, radius:60, color:C.public },
-    // 学校
-    { id:'TechHS',        name:'長井工業高校', lat:38.114426209437404, lon:140.03013087985815, radius:60, color:C.school },
-    { id:'NagaiHS',       name:'長井高校',   lat:38.097283861825424, lon:140.0380452392042,  radius:60, color:C.school }
-  ];
+    // ====== 設定（目的地） ======
+    const POIS = [
+      // タスパークホテル入口（例）
+      { name: 'タスパークホテル', lat: 38.101327, lon: 140.043027 }
+    ];
+    // ============================
 
-  // ===== ユーティリティ =====
-  const $ = sel => document.querySelector(sel);
-  const gpsInfo = $('#gpsInfo');
-  function haversine(lat1, lon1, lat2, lon2){
-    const R=6371000, toRad=x=>x*Math.PI/180;
-    const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
-    const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-    return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-  }
+    const hudLatlon = document.getElementById('latlon');
+    const hudNearest = document.getElementById('nearest');
+    const hudNotice  = document.getElementById('notice');
+    document.getElementById('btn').onclick = () => location.reload();
 
-  // ===== ARエンティティ生成 =====
-  const scene = document.querySelector('a-scene');
-  const mapById = new Map();
-  function createEntities(){
-    PLACES.forEach(p=>{
-      const wrapper = document.createElement('a-entity');
-      wrapper.setAttribute('id', 'place-'+p.id);
-      wrapper.setAttribute('gps-entity-place', `latitude: ${p.lat}; longitude: ${p.lon}`);
-      wrapper.setAttribute('visible', 'false');
-
-      // マーカー本体
-      const marker = document.createElement('a-sphere');
-      marker.setAttribute('radius', '0.8');
-      marker.setAttribute('color', p.color);
-      marker.setAttribute('position','0 0 0');
-      marker.setAttribute('animation','property: rotation; to: 0 360 0; loop: true; dur: 6000; easing: linear');
-      wrapper.appendChild(marker);
-
-      // ラベル
-      const label = document.createElement('a-text');
-      label.setAttribute('value', p.name);
-      label.setAttribute('align','center');
-      label.setAttribute('width','6');
-      label.setAttribute('color','#ffffff');
-      label.setAttribute('position','0 1.4 0');
-      wrapper.appendChild(label);
-
-      scene.appendChild(wrapper);
-      mapById.set(p.id, { def:p, el:wrapper, visible:false });
-    });
-  }
-
-  // ===== 表示制御（最も近い1件だけ表示）＋ Enter/Leave ログ =====
-  function updateVisibility(curLat, curLon){
-    // 最短候補を抽出
-    const inside = [];
-    PLACES.forEach(p=>{
-      const d = haversine(curLat, curLon, p.lat, p.lon);
-      p._dist = d;
-      const rec = mapById.get(p.id);
-      if (d <= p.radius) inside.push(p);
-      // いったん全非表示
-      if (rec && rec.el.getAttribute('visible')) rec.el.setAttribute('visible','false');
-    });
-
-    if (inside.length){
-      inside.sort((a,b)=>a._dist-b._dist);
-      const nearest = inside[0];
-      const rec = mapById.get(nearest.id);
-      if (rec && !rec.visible){
-        console.log(`[Enter] ${nearest.name} (${nearest._dist.toFixed(1)} m)`);
-      }
-      mapById.forEach(r=>r.visible=false);
-      if (rec){ rec.el.setAttribute('visible','true'); rec.visible=true; }
-    }else{
-      // すべて範囲外になった時の Leave ログ
-      mapById.forEach(r=>{
-        if (r.visible){ console.log(`[Leave] ${r.def.name}`); r.visible=false; }
-      });
+    // Haversine距離(m)
+    function dist(lat1, lon1, lat2, lon2){
+      const R=6371000;
+      const toRad = d=>d*Math.PI/180;
+      const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+      return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
     }
-  }
 
-  // ===== 実行 =====
-  createEntities();
-  if ('geolocation' in navigator){
-    navigator.geolocation.watchPosition(
-      pos=>{
-        const { latitude:lat, longitude:lon, accuracy } = pos.coords;
-        gpsInfo.setAttribute('value', `lat: ${lat.toFixed(6)}  lon: ${lon.toFixed(6)}  ±${accuracy.toFixed(1)} m`);
-        updateVisibility(lat, lon);
-      },
-      err=>console.error(err),
-      { enableHighAccuracy:true, maximumAge:0, timeout:10000 }
-    );
-  }else{
-    alert('位置情報が利用できません。');
-  }
+    // 方位イベント監視（2秒で来なければフォールバック）
+    let headingOk = false;
+    let headingTimer = setTimeout(()=>{ if(!headingOk) enableFallback(); }, 2000);
+
+    function handleOrientation(){
+      headingOk = true;
+      clearTimeout(headingTimer);
+      // フォールバックピンは不要
+      const ahead = document.getElementById('aheadPin');
+      if (ahead) ahead.setAttribute('visible', false);
+      hudNotice.style.display = 'none';
+      window.removeEventListener('deviceorientation', handleOrientation);
+    }
+    window.addEventListener('deviceorientation', handleOrientation, {once:false});
+
+    // フォールバック：カメラの前に常時ピンを置く
+    function enableFallback(){
+      const ahead = document.getElementById('aheadPin');
+      if (!ahead) return;
+      ahead.setAttribute('visible', true);
+      hudNotice.style.display = '';
+      // 毎フレーム、カメラの前方2m・高さ0.5mへ
+      const cam = document.querySelector('[gps-camera]');
+      const tick = () => {
+        if (!cam.object3D) { requestAnimationFrame(tick); return; }
+        const camObj = cam.object3D;
+        const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camObj.quaternion).normalize();
+        const pos = camObj.position.clone().add(dir.multiplyScalar(2)); // 2m前
+        pos.y = (camObj.position.y||0) + 0.5; // 0.5m上
+        ahead.object3D.position.copy(pos);
+        requestAnimationFrame(tick);
+      };
+      tick();
+    }
+
+    // GPS更新時にHUD更新＋POIを配置
+    const scene = document.querySelector('a-scene');
+    const camEl = document.querySelector('[gps-camera]');
+    let placed = false;
+
+    camEl.addEventListener('gps-camera-update-position', (e) => {
+      const {position, accuracy} = e.detail; // lat, lon, accuracy
+      const {latitude:lat, longitude:lon} = position;
+      hudLatlon.textContent = `lat: ${lat.toFixed(6)}  lon: ${lon.toFixed(6)}  ±${(accuracy||0).toFixed(1)} m`;
+
+      // 最寄り表示
+      let nearest = {name:'-', d:Infinity};
+      for (const p of POIS){
+        const d = dist(lat, lon, p.lat, p.lon);
+        if (d < nearest.d) nearest = {name:p.name, d};
+      }
+      hudNearest.textContent = `nearest: ${nearest.name} (${isFinite(nearest.d)?nearest.d.toFixed(1):'-'} m)`;
+
+      // 初回だけPOIエンティティ生成
+      if (!placed){
+        placed = true;
+        for (const p of POIS){
+          const e = document.createElement('a-entity');
+          e.setAttribute('gps-entity-place', `latitude: ${p.lat}; longitude: ${p.lon}`);
+          e.setAttribute('look-at', '[gps-camera]');
+          e.innerHTML = `
+            <a-sphere radius="0.6" color="#ff9800"></a-sphere>
+            <a-text value="${p.name}" align="center" position="0 1 0" color="#fff"></a-text>
+          `;
+          scene.appendChild(e);
+        }
+      }
+    });
   </script>
+<!-- カメラ再取得オーバーレイ -->
+<div id="camFix" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000;z-index:99999">
+  <button id="camBtn" style="font-size:18px;padding:12px 18px;border:0;border-radius:10px">📷 カメラを再取得</button>
+</div>
+<script>
+  (async () => {
+    // 権限が既に granted ならオーバーレイを自動で隠す
+    try {
+      const st = await navigator.permissions.query({name:'camera'});
+      if (st.state === 'granted') document.getElementById('camFix').style.display='none';
+    } catch(_) {}
+  })();
+  document.getElementById('camBtn').onclick = async () => {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
+      // 取得できたらすぐ停止→リロード（AR.jsが取り直す）
+      s.getTracks().forEach(t=>t.stop());
+      location.reload();
+    } catch(e) {
+      alert('カメラにアクセスできませんでした。設定→Safari→カメラ を許可にして再度お試しください。');
+    }
+  };
+</script>
 </body>
 </html>
