@@ -57,7 +57,7 @@
       <a-entity
         id="model"
         gltf-model="model.glb"
-        gps-entity-place="latitude:38.108993; longitude:140.043767;"
+        gps-entity-place="latitude:38.101327; longitude:140.043027;"
         scale="1 1 1"
         visible="false"
       ></a-entity>
@@ -75,7 +75,7 @@
       const sound = document.getElementById("guide");
       const btn = document.getElementById("startBtn");
 
-      const poi = { lat: 38.108993, lon: 140.043767 }; // 目的地
+      const poi = { lat: 38.101327, lon: 140.043027 }; // 目的地
       const R = 6371000; // 地球半径(m)
 
       function toRad(deg) { return (deg * Math.PI) / 180; }
@@ -107,13 +107,13 @@
         hudDist.textContent = `distance: ${dist.toFixed(1)} m`;
 
         // 10m以内で出現
-        if (dist < 10) {
-          model.setAttribute("visible", "true");
-          if (!sound.components.sound.isPlaying) sound.components.sound.playSound();
-        } else {
-          model.setAttribute("visible", "false");
-          if (sound.components.sound.isPlaying) sound.components.sound.stopSound();
-        }
+ if (dist < TRIGGER_M) {
+  model.setAttribute('visible', 'true');
+  if (!sound.components.sound.isPlaying) sound.components.sound.playSound();
+} else {
+  model.setAttribute('visible', 'false');
+  if (sound.components.sound.isPlaying) sound.components.sound.stopSound();
+}
       }
 
       function startGeo() {
