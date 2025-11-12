@@ -1,148 +1,26 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GPS AR (Nearest Only + Enter/Leave Log)</title>
-  <script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
-  <style>
-    html, body { height: 100%; margin: 0; overflow: hidden; background: transparent; }
-    a-scene { position: fixed; inset: 0; width: 100vw; height: 100vh; }
-    .hud{
-      position: fixed; left:10px; top:10px; z-index:10;
-      background: rgba(0,0,0,.5); color:#fff; padding:8px 10px; border-radius:6px;
-      font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;
-      white-space: pre;
-    }
-  </style>
-</head>
-<body>
-  <div class="hud" id="hud">lat: -, lon: -, ±- m</div>
-
-  <a-scene
-    vr-mode-ui="enabled: false"
-    embedded
-    renderer="alpha: true; antialias: true; colorManagement: true;"
-    arjs="sourceType: webcam; videoTexture: true; facingMode: environment; gpsMinDistance: 1; debugUIEnabled: false;"
-  >
-    <a-camera gps-camera rotation-reader></a-camera>
-  </a-scene>
-
-  <script>
-    const LOG_ENDPOINT = "https://script.google.com/macros/s/AKfycbzyjQtcf1Wam2KBCQQtrTj-HGmAglkiolEiOUxmB0d_LrtfKpO8AouweQ5Pc82_nFTRBw/exec"; // 送信しない場合は空のまま
-
-    const CATEGORY_COLORS = {
-      "観光": "#f5a623", "公共": "#0066cc", "学校": "#66cc66"
-    };
-
-    const PLACES = [
-      { id:'tas-park', name:'タスパークホテル', lat:38.10148128126027, lon:140.0433090680094, radius:100, category:'観光' },
-      { id:'Marudaiougiya', name:'丸大扇屋', lat:38.11228246118919, lon:140.036198935986, radius:100, category:'観光' },
-      { id:'Kozakurakan', name:'小桜館', lat:38.110963329145335, lon:140.03632275489852, radius:100, category:'観光' },
-      { id:'MinamiNagai', name:'南長井駅', lat:38.09769549394771, lon:140.03458623775896, radius:100, category:'公共' },
-      { id:'MichinoEkiNagai', name:'道の駅 かわのみなと長井', lat:38.108970970886325, lon:140.04382939078403, radius:100, category:'公共' },
-      { id:'Nagaisiyakusho', name:'長井市役所', lat:38.1063333593554, lon:140.033892868012, radius:100, category:'公共' },
-      { id:'Kurunt', name:'クルント', lat:38.10491876278905, lon:140.03466346205656, radius:100, category:'公共' },
-      { id:'NagaiKougyokoukou', name:'長井工業高校', lat:38.114426209437404, lon:140.03013087985815, radius:100, category:'学校' },
-      { id:'Nagaikoukou', name:'長井高校', lat:38.097283861825424, lon:140.0380452392042, radius:100, category:'学校' },
-    ];
-
-    function distanceMeter(aLat,aLon,bLat,bLon){
-      const R=6371000, toRad=d=>d*Math.PI/180;
-      const dLat=toRad(bLat-aLat), dLon=toRad(bLon-aLon);
-      const s=Math.sin(dLat/2)**2 + Math.cos(toRad(aLat))*Math.cos(toRad(bLat))*Math.sin(dLon/2)**2;
-      return 2*R*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
-    }
-
-    async function sendLog(payload){
-      if(!LOG_ENDPOINT) return;
-      try{ await fetch(LOG_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}); }catch(e){}
-    }
-
-    function createPlaceEntities(){
-      const scene=document.querySelector("a-scene");
-      PLACES.forEach(p=>{
-        const wrap=document.createElement("a-entity");
-        wrap.setAttribute("id","place-"+p.id);
-        wrap.setAttribute("gps-entity-place",`latitude:${p.lat}; longitude:${p.lon}`);
-        wrap.setAttribute("visible","false");
-
-        const label=document.createElement("a-text");
-        label.setAttribute("value",p.name);
-        label.setAttribute("align","center");
-        label.setAttribute("color","#ffffff");
-        label.setAttribute("width","6");
-        label.setAttribute("position","0 1.2 0");
-        label.setAttribute("shader","msdf");
-        wrap.appendChild(label);
-
-        const marker=document.createElement("a-sphere");
-        marker.setAttribute("radius","0.5");
-        marker.setAttribute("color", CATEGORY_COLORS[p.category] || "#cccccc");
-        marker.setAttribute("scale","0.25 0.25 0.25");
-        marker.setAttribute("animation","property: rotation; to: 0 360 0; loop: true; dur: 6000; easing: linear");
-        wrap.appendChild(marker);
-
-        scene.appendChild(wrap);
-      });
-    }
-
-    let lastVisibleId=null;
-    function updateVisibilityAndLog(lat,lon,acc){
-      PLACES.forEach(p=>{
-        const ent=document.getElementById("place-"+p.id);
-        if(ent) ent.setAttribute("visible",false);
-      });
-
-      const cand=PLACES.map(p=>({...p, dist:distanceMeter(lat,lon,p.lat,p.lon)}))
-                       .filter(p=>p.dist<=p.radius)
-                       .sort((a,b)=>a.dist-b.dist);
-      const nearest=cand[0]||null;
-
-      if(nearest){
-        const ent=document.getElementById("place-"+nearest.id);
-        if(ent) ent.setAttribute("visible",true);
-        if(nearest.id!==lastVisibleId){
-          if(lastVisibleId){
-            const prev=PLACES.find(x=>x.id===lastVisibleId);
-            if(prev) sendLog({type:"leave",placeId:prev.id,placeName:prev.name,category:prev.category,timestamp:Date.now()});
-          }
-          sendLog({type:"enter",placeId:nearest.id,placeName:nearest.name,category:nearest.category,distance:Math.round(nearest.dist),accuracy:acc,timestamp:Date.now()});
-          lastVisibleId=nearest.id;
-        }
-      }else if(lastVisibleId){
-        const prev=PLACES.find(x=>x.id===lastVisibleId);
-        if(prev) sendLog({type:"leave",placeId:prev.id,placeName:prev.name,category:prev.category,timestamp:Date.now()});
-        lastVisibleId=null;
-      }
-    }
-
-    createPlaceEntities();
-
-    const hud=document.getElementById("hud");
-    if("geolocation" in navigator){
-      navigator.geolocation.watchPosition(
-        pos=>{
-          const {latitude:lat, longitude:lon, accuracy:acc}=pos.coords;
-          hud.textContent=`lat: ${lat.toFixed(6)} lon: ${lon.toFixed(6)} ±${Math.round(acc)} m`;
-          updateVisibilityAndLog(lat,lon,Math.round(acc));
-        },
-        err=>{ hud.textContent="位置取得エラー: "+err.message; },
-        { enableHighAccuracy:true, maximumAge:0, timeout:10000 }
-      );
-    }else{
-      hud.textContent="この端末では位置情報を利用できません。";
-    }
-
-    // 退場時の補足 Leave
-    window.addEventListener("beforeunload",()=>{
-      if(!LOG_ENDPOINT || !lastVisibleId) return;
-      const prev=PLACES.find(x=>x.id===lastVisibleId);
-      if(prev && navigator.sendBeacon){
-        navigator.sendBeacon(LOG_ENDPOINT, JSON.stringify({type:"leave",placeId:prev.id,placeName:prev.name,category:prev.category,timestamp:Date.now()}));
-      }
-    });
-  </script>
-</body>
-</html>
+<!DOCTYPE html><html><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Camera Test</title>
+<script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
+<style>
+  html,body{height:100%;margin:0;overflow:hidden;background:#000;}
+  a-scene{position:fixed;inset:0}
+  .msg{position:fixed;left:10px;top:10px;padding:6px 8px;background:rgba(0,0,0,.5);color:#fff;border-radius:6px;font:14px -apple-system,BlinkMacSystemFont}
+</style>
+</head><body>
+<div class="msg" id="m">starting camera…</div>
+<a-scene embedded renderer="alpha:true;antialias:true"
+        arjs="sourceType: webcam; videoTexture:true; facingMode: environment; debugUIEnabled:false">
+  <a-camera></a-camera>
+</a-scene>
+<script>
+  // 3秒でカメラ動画要素が無ければ警告
+  setTimeout(()=>{
+    const v=document.querySelector('#arjs-video');
+    const m=document.getElementById('m');
+    if(!v || !v.srcObject){ m.textContent='カメラ未起動：サイトのカメラ権限を許可してください'; }
+    else { m.textContent='カメラ起動中'; }
+  },3000);
+</script>
+</body></html>
