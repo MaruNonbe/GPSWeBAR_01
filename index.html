@@ -1,144 +1,112 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="utf-8" />
-<title>GPS-AR (stable start + diagnostics)</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<style>
-  html,body{margin:0;height:100%;background:#000;overflow:hidden}
-  #hud{position:fixed;top:12px;left:12px;right:12px;z-index:9999;
-       font:16px/1.5 ui-monospace,monospace;color:#fff}
-  .tag{display:inline-block;background:rgba(0,0,0,.55);padding:8px 10px;border-radius:8px}
-  #status{margin-top:6px;white-space:pre-wrap}
-  #gate{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:10000}
-  #gate button{font-size:18px;padding:12px 18px;border:0;border-radius:10px}
-</style>
+  <meta charset="utf-8" />
+  <title>走行ログ地図ビューア</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<!-- A-Frame / AR.js（GPS） -->
-<script src="https://aframe.io/releases/1.4.1/aframe.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/aframe-ar.js@3.3.2/aframe-ar.min.js"></script>
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; font-family: sans-serif; }
+    #map { height: 100%; width: 100%; }
+    #panel {
+      position: fixed;
+      top: 10px; left: 10px;
+      background: rgba(0,0,0,0.6);
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      z-index: 9999;
+    }
+  </style>
+
+  <!-- ✅ Google Maps APIキーを入れてください -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY"></script>
+
+  <!-- ✅ PapaParse（CSVをJSON化） -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
 
-<!-- HUD -->
-<div id="hud">
-  <div id="latlon" class="tag">lat: -  lon: -  ±- m</div><br>
-  <div id="near"   class="tag">nearest: -</div><br>
-  <div id="dist"   class="tag">distance: - m</div><br>
-  <div id="status" class="tag">status: ready</div>
-</div>
-
-<!-- 開始ゲート（ユーザー操作で権限を掴む） -->
-<div id="gate"><button id="startBtn">📷 ARを開始</button></div>
-
-<!-- A-Frame Scene -->
-<a-scene id="scene"
-  embedded
-  vr-mode-ui="enabled: false"
-  renderer="colorManagement: true; physicallyCorrectLights: true"
-  arjs="sourceType: webcam; facingMode: environment; debugUIEnabled: false">
-  <a-camera gps-camera rotation-reader></a-camera>
-  <a-entity light="type:ambient; intensity:0.9"></a-entity>
-
-  <!-- 親を常時表示（カテゴリ分けする場合も親は visible=true に） -->
-  <a-entity id="poiRoot"
-    gps-entity-place="latitude:38.101327; longitude:140.043027;"
-    position="0 1 0" visible="true">
-
-    <!-- デバッグ用ピン（常に見える形状） -->
-    <a-entity id="debugPin" visible="false">
-      <a-torus radius="0.6" radius-tubular="0.03" rotation="-90 0 0" color="#16c7d9"></a-torus>
-      <a-cylinder height="0.9" radius="0.12" color="#16c7d9" position="0 0.45 0"></a-cylinder>
-      <a-sphere   radius="0.22" color="#16c7d9" position="0 0.95 0"></a-sphere>
-    </a-entity>
-
-    <!-- 3Dモデル（必要ならURL差替え） -->
-    <a-entity id="model" gltf-model="model.glb" scale="1 1 1" position="0 0 0" visible="false"></a-entity>
-
-    <!-- 音声（既定OFF） -->
-    <a-entity id="sound" sound="src: url(sound.mp3); autoplay: false; positional: true"></a-entity>
-  </a-entity>
-</a-scene>
+  <div id="panel">🚗 GPSログ地図ビューア</div>
+  <div id="map"></div>
 
 <script>
-/* ===== 設定 ===== */
-const POI = { lat: 38.101327, lon: 140.043027 }; // タスパ入口
-const USE_MODEL = false;  // ← モデルは最初OFF（安定後に true）
-const USE_SOUND = false;  // ← 音は最初OFF（必要時 true）
-/* ================= */
+/* ========= 1. スプレッドシート公開CSVのURL ========= */
+// Googleシート → [ファイル] > [共有] > [リンクを知っている全員に閲覧権限を付与]
+// その後URL中の "/edit#gid=" を "/gviz/tq?tqx=out:csv&gid=" に変更
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/1oq1ottoPDNcqE06opb9AhugWJIFvd2JCyn2u9iDqwu4/gviz/tq?tqx=out:csv&gid=0';
 
-const hudLatlon = document.getElementById('latlon');
-const hudNear   = document.getElementById('near');
-const hudDist   = document.getElementById('dist');
-const hudStatus = document.getElementById('status');
+/* ========= 2. 初期設定 ========= */
+let map;
+let markers = [];
+let pathLine;
 
-const scene   = document.getElementById('scene');
-const gate    = document.getElementById('gate');
-const pin     = document.getElementById('debugPin');
-const model   = document.getElementById('model');
-const soundEl = document.getElementById('sound');
-const camEl   = document.querySelector('[gps-camera]');
+/* ========= 3. Google Map初期化 ========= */
+function initMap() {
+  map = new google.maps.Map(document.getElementById('map'), {
+    center: { lat: 38.107, lng: 140.043 },
+    zoom: 14,
+    mapTypeId: 'roadmap'
+  });
 
-// 3Dモデルロードログ
-model.addEventListener('model-loaded', ()=> setStatus('model-loaded'));
-model.addEventListener('model-error',  ()=> setStatus('model-error: check GLB URL'));
-
-// AR.js カメライベント
-scene.addEventListener('camera-init',    ()=> setStatus('camera-init'));
-scene.addEventListener('camera-error', e => setStatus('camera-error: ' + (e && e.detail && e.detail.error && e.detail.error.message || 'unknown')));
-
-// GPS更新イベント
-camEl.addEventListener('gps-camera-update-position', (e) => {
-  const { position, accuracy } = e.detail;
-  const lat = position.latitude, lon = position.longitude;
-  hudLatlon.textContent = `lat:${fmt(lat)}  lon:${fmt(lon)}  ±${fmt(accuracy)} m`;
-
-  const d = haversine(lat, lon, POI.lat, POI.lon);
-  hudDist.textContent = `distance: ${d.toFixed(1)} m`;
-
-  const TRIGGER = Math.max((accuracy||20) * 1.5, 25); // しきい値を精度連動＋下限25m
-  hudNear.textContent = 'nearest: ' + (d < TRIGGER ? 'IN' : 'OUT');
-
-  if (d < TRIGGER) {
-    pin.setAttribute('visible', 'true');              // まずピンだけ確実に
-    model.setAttribute('visible', USE_MODEL ? 'true' : 'false');
-    if (USE_SOUND) { if (!soundEl.components.sound?.isPlaying) soundEl.components.sound.playSound(); }
-    setStatus(`IN-RANGE (< ${TRIGGER.toFixed(1)} m)`);
-  } else {
-    pin.setAttribute('visible', 'false');
-    model.setAttribute('visible', 'false');
-    if (soundEl.components.sound?.isPlaying) soundEl.components.sound.stopSound();
-    setStatus('out of range');
-  }
-});
-
-// === スタート：ユーザー操作で一度だけカメラ権限を掴む → 解放 → AR.js ===
-document.getElementById('startBtn').onclick = async () => {
-  try {
-    setStatus('requesting camera (environment)...');
-    const testStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-    // 取得成功 → すぐ解放（AR.js に譲る）
-    testStream.getTracks().forEach(t => t.stop());
-    setStatus('permission granted. starting AR.js...');
-  } catch(err) {
-    setStatus('getUserMedia failed: ' + err.name + ' / ' + err.message +
-              '\nSafariのアドレスバー左「aA」→このWebサイトの設定→カメラ/マイク/位置情報を「許可」にしてください。');
-    return; // 権限なければここで終了
-  }
-  // ゲートを閉じる
-  gate.style.display = 'none';
-  // ここからAR.jsがストリームを開始（camera-init/camera-errorで結果が出ます）
-};
-
-// === ユーティリティ ===
-function setStatus(msg){ hudStatus.textContent = 'status: ' + msg; }
-function fmt(v){ return (v==null || isNaN(v)) ? '-' : Number(v).toFixed(1); }
-function haversine(lat1, lon1, lat2, lon2){
-  const R=6371000, toRad=d=>d*Math.PI/180;
-  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
-  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-  return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  loadCSVData();
+  setInterval(loadCSVData, 5000); // 5秒ごとに更新
 }
+
+/* ========= 4. CSV読み込み・描画 ========= */
+function loadCSVData() {
+  Papa.parse(CSV_URL, {
+    download: true,
+    header: true,
+    complete: function(results) {
+      const rows = results.data.filter(r => r.lat && r.lon);
+
+      if (rows.length === 0) return;
+
+      // 既存マーカー削除
+      markers.forEach(m => m.setMap(null));
+      markers = [];
+
+      const pathCoords = [];
+
+      rows.forEach(row => {
+        const lat = parseFloat(row.lat);
+        const lon = parseFloat(row.lon);
+        const event = row.event || '';
+        const time = row.timestamp || '';
+
+        pathCoords.push({ lat, lng: lon });
+
+        // マーカー追加
+        const marker = new google.maps.Marker({
+          position: { lat, lng: lon },
+          map: map,
+          title: `${time}\n${event}`
+        });
+        markers.push(marker);
+      });
+
+      // 折れ線で経路表示
+      if (pathLine) pathLine.setMap(null);
+      pathLine = new google.maps.Polyline({
+        path: pathCoords,
+        geodesic: true,
+        strokeColor: '#FF0000',
+        strokeOpacity: 0.8,
+        strokeWeight: 3,
+        map: map
+      });
+
+      // 最新位置へ移動
+      const latest = pathCoords[pathCoords.length - 1];
+      map.panTo(latest);
+    }
+  });
+}
+
+/* ========= 5. 起動 ========= */
+window.onload = initMap;
 </script>
+
 </body>
 </html>
