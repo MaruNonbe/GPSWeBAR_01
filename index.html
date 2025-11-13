@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>GPSトリガーAR（センサー許可＋ログ）</title>
+  <title>GPSトリガーAR（カテゴリ別3D）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- A-Frame + AR.js -->
@@ -16,15 +16,31 @@
   <style>
     body { margin:0; overflow:hidden; }
     #hud {
-      position: fixed; top: 8px; left: 8px; z-index: 9999;
-      background: rgba(0,0,0,0.55); color: #fff;
-      font-size: 12px; line-height: 1.4; padding: 6px 8px; border-radius: 4px;
-      max-width: 90vw; white-space: pre-line;
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      z-index: 9999;
+      background: rgba(0,0,0,0.55);
+      color: #fff;
+      font-size: 12px;
+      line-height: 1.4;
+      padding: 6px 8px;
+      border-radius: 4px;
+      max-width: 90vw;
+      white-space: pre-line;
     }
     #sensorButton {
-      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      background: #007bff; color: #fff; padding: 14px 26px; border: none;
-      border-radius: 8px; font-size: 18px; z-index: 10000;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #007bff;
+      color: #fff;
+      padding: 14px 26px;
+      border: none;
+      border-radius: 8px;
+      font-size: 18px;
+      z-index: 10000;
     }
   </style>
 </head>
@@ -42,9 +58,7 @@
   >
     <!-- 実機GPSカメラ -->
     <a-camera gps-camera rotation-reader></a-camera>
-
-    <!-- 位置確認用の小さな箱（据え置き） -->
-    <a-box position="0 0 -2" depth="0.2" height="0.2" width="0.2" color="#00FFAA"></a-box>
+    <!-- ★デバッグ用 a-box は削除しました -->
   </a-scene>
 
   <!-- iPhone用：センサーを明示的に有効化するボタン -->
@@ -53,100 +67,110 @@
 <script>
 /* ========= 1. GASのURL（そのまま） ========= */
 const LOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw_uhqYjG25qdhdrZ6zCZgjTCKPVypqmTcgKenXBtt4LSBCaoARHYSAYxtMEHijY1rSdA/exec';
+
 function sendLog(payload) {
   fetch(LOG_ENDPOINT, {
     method: 'POST',
     mode: 'no-cors',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
-  }).catch(err => console.warn('ログ送信失敗:', err));
+  }).catch(err => {
+    console.warn('ログ送信失敗:', err);
+  });
 }
 
-/* ========= 2. 地点（カテゴリ追加） =========
-   category: 観光 / 公共施設 / 学校
+/* ========= 2. カテゴリ付きの地点情報 =========
+   category:
+     'tourism'  …… 観光
+     'public'   …… 公共施設
+     'school'   …… 学校
 */
 const PLACES = [
-  { id:'tas-park',          name:'タスパークホテル',        category:'観光',   lat:38.10148128126027,  lon:140.0433090680094,  radius:20 },
-  { id:'Kozakurakan',       name:'小桜館',                  category:'観光',   lat:38.110963329145335, lon:140.03632275489852, radius:15 },
-  { id:'Marudaiougiya',     name:'丸大扇屋',                category:'観光',   lat:38.11228246118919,  lon:140.036198935986,   radius:15 },
+  // 観光
+  { id: 'Marudaiougiya',     name: '丸大扇屋',      lat: 38.11228246118919,  lon: 140.036198935986,   radius: 15, category: 'tourism' },
+  { id: 'Kozakurakan',       name: '小桜館',        lat: 38.110963329145335, lon: 140.03632275489852, radius: 15, category: 'tourism' },
+  { id: 'tas-park',          name: 'タスパークホテル', lat: 38.10148128126027, lon: 140.0433090680094, radius: 20, category: 'tourism' },
 
-  { id:'MinamiNagai',       name:'南長井駅',                category:'公共施設', lat:38.09769549394771, lon:140.03458623775896, radius:15 },
-  { id:'MichinoEkiNagai',   name:'道の駅 かわのみなと長井', category:'公共施設', lat:38.108970970886325,lon:140.04382939078403, radius:20 },
-  { id:'Nagaisiyakusho',    name:'長井市役所',              category:'公共施設', lat:38.1063333593554,  lon:140.033892868012,   radius:15 },
-  { id:'Kurunt',            name:'クルント',                category:'公共施設', lat:38.10491876278905, lon:140.03466346205656, radius:15 },
+  // 公共施設
+  { id: 'MichinoEkiNagai',   name: '道の駅 かわのみなと長井', lat: 38.108970970886325, lon: 140.04382939078403, radius: 20, category: 'public' },
+  { id: 'Nagaisiyakusho',    name: '長井市役所',     lat: 38.1063333593554,   lon: 140.033892868012,   radius: 15, category: 'public' },
+  { id: 'MinamiNagai',       name: '南長井駅',       lat: 38.09769549394771,  lon: 140.03458623775896, radius: 15, category: 'public' },
+  { id: 'Kurunt',            name: 'クルント',       lat: 38.10491876278905,  lon: 140.03466346205656, radius: 15, category: 'public' },
 
-  { id:'NagaiKougyokoukou', name:'長井工業高校',            category:'学校',   lat:38.114426209437404, lon:140.03013087985815, radius:15 },
-  { id:'Nagaikoukou',       name:'長井高校',                category:'学校',   lat:38.097283861825424, lon:140.0380452392042,  radius:15 }
+  // 学校
+  { id: 'NagaiKougyokoukou', name: '長井工業高校',   lat: 38.114426209437404, lon: 140.03013087985815, radius: 15, category: 'school' },
+  { id: 'Nagaikoukou',       name: '長井高校',       lat: 38.097283861825424, lon: 140.0380452392042,  radius: 15, category: 'school' }
 ];
 
-/* ========= 2.5 カテゴリごとの形状と色 =========
-   観光=球(gold), 公共施設=立方体(blue), 学校=円錐(green)
+/* ========= 2.5 カテゴリごとの形と色 =========
+   - 観光: 立方体（box） + オレンジ
+   - 公共施設: 円錐（cone） + 青
+   - 学校: 球（sphere） + 緑
+   （必要なら値だけ変えればOKです）
 */
 const CATEGORY_STYLE = {
-  '観光':       { primitive:'a-sphere',     color:'#ffb703', extra:{} },
-  '公共施設':   { primitive:'a-box',        color:'#2196f3', extra:{} },
-  '学校':       { primitive:'a-cone',       color:'#2ecc71', extra:{ 'radius-bottom':'0.6', 'radius-top':'0.0', height:'1.0' } }
+  tourism: { primitive: 'box',    color: '#ff9933' },
+  public:  { primitive: 'cone',   color: '#3399ff' },
+  school:  { primitive: 'sphere', color: '#66cc66' }
 };
 
 const hud = document.getElementById('hud');
 
-/* ========= 3. 距離（メートル） ========= */
+/* ========= 3. 距離 ========= */
 function distanceMeter(lat1, lon1, lat2, lon2) {
-  const R = 6378137, toRad = x => x*Math.PI/180;
-  const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-  return 2*R*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const R = 6378137;
+  const toRad = x => x * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
 }
 
-/* ========= 4. 各地点の3Dコンテンツ（形＋ラベル）を生成 ========= */
+/* ========= 4. 各地点用の3Dエンティティ生成 =========
+   カメラの前 3m あたりにポップ表示
+*/
 function createPlaceEntities() {
   const scene = document.querySelector('a-scene');
 
   PLACES.forEach(place => {
-    // 親（このvisibleだけ切り替える）
+    const style = CATEGORY_STYLE[place.category] || CATEGORY_STYLE.tourism;
+
+    // 親（場所全体）: 位置と visible をまとめて制御
     const root = document.createElement('a-entity');
     root.setAttribute('id', 'place-' + place.id);
-    root.setAttribute('position', '0 1.3 -3'); // カメラ前3m・高さ1.3m
+    root.setAttribute('position', '0 1.5 -3'); // カメラ前3m
     root.setAttribute('visible', 'false');
 
-    // 形状
-    const style = CATEGORY_STYLE[place.category] || CATEGORY_STYLE['観光'];
-    const shape = document.createElement(style.primitive);
-    shape.setAttribute('color', style.color);
-    // サイズ共通
-    shape.setAttribute('scale', '0.9 0.9 0.9');
-    // 追加パラメータ（coneの半径など）
-    Object.entries(style.extra).forEach(([k,v]) => shape.setAttribute(k, v));
-    root.appendChild(shape);
+    // 3D形状
+    const marker = document.createElement('a-entity');
+    marker.setAttribute('geometry',
+      `primitive: ${style.primitive}; height:0.7; width:0.7; depth:0.7; radius:0.45;`
+    );
+    marker.setAttribute('material', `color: ${style.color}; opacity: 0.9;`);
+    marker.setAttribute('position', '0 0 0');
+    root.appendChild(marker);
 
-    // ラベル（場所名）
+    // テキスト（場所名）
     const label = document.createElement('a-text');
     label.setAttribute('value', place.name);
     label.setAttribute('align', 'center');
     label.setAttribute('color', '#ffffff');
-    label.setAttribute('position', '0 1.0 0'); // 形の少し上
-    label.setAttribute('width', '3.5');
-    label.setAttribute('negate', 'false'); // 両面表示
+    label.setAttribute('width', '4');
+    label.setAttribute('position', '0 0.8 0'); // マーカーの少し上
+    label.setAttribute('anchor', 'center');
     root.appendChild(label);
-
-    // （任意）視認しやすいリングベース
-    const ring = document.createElement('a-ring');
-    ring.setAttribute('radius-inner', '0.55');
-    ring.setAttribute('radius-outer', '0.65');
-    ring.setAttribute('rotation', '-90 0 0');
-    ring.setAttribute('position', '0 -0.6 0');
-    ring.setAttribute('color', '#ffffff');
-    ring.setAttribute('opacity', '0.5');
-    root.appendChild(ring);
 
     scene.appendChild(root);
 
-    // 状態フラグ
     place._isInside = false;
   });
 }
 
-/* ========= 5. GPS監視（表示＆ログ） ========= */
+/* ========= 5. GPS監視して表示・ログ送信 ========= */
 let lastPos = null;
 let lastSentAt = 0;
 
@@ -171,10 +195,17 @@ function startGPSWatch() {
         const root = document.getElementById('place-' + place.id);
         const isNear = dist <= place.radius;
 
-        if (root) root.setAttribute('visible', isNear);
+        if (root) {
+          root.setAttribute('visible', isNear);
+        }
 
-        if (!place._isInside && isNear) sendLog({ place_id: place.id, event: 'enter', lat, lon });
-        if ( place._isInside && !isNear) sendLog({ place_id: place.id, event: 'leave', lat, lon });
+        if (!place._isInside && isNear) {
+          sendLog({ place_id: place.id, event: 'enter', lat, lon });
+        }
+        if (place._isInside && !isNear) {
+          sendLog({ place_id: place.id, event: 'leave', lat, lon });
+        }
+
         place._isInside = isNear;
       });
     },
@@ -185,18 +216,24 @@ function startGPSWatch() {
     { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
   );
 
-  // 5秒ごとに現在地ログ
+  // 5秒ごとの位置ログ
   setInterval(() => {
     if (!lastPos) return;
     const now = Date.now();
     if (now - lastSentAt < 5000) return;
-    sendLog({ place_id: 'current', event: 'position', lat: lastPos.lat, lon: lastPos.lon });
+    sendLog({
+      place_id: 'current',
+      event: 'position',
+      lat: lastPos.lat,
+      lon: lastPos.lon
+    });
     lastSentAt = now;
   }, 5000);
 }
 
-/* ========= 6. iPhone向けセンサー許可ボタン（据え置き） ========= */
+/* ========= 6. iPhone向けセンサー許可ボタン ========= */
 const sensorButton = document.getElementById('sensorButton');
+
 sensorButton.addEventListener('click', async () => {
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function') {
