@@ -2,16 +2,16 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>GPSトリガーAR（カテゴリ色分け版）</title>
+  <title>GPSトリガーAR（カテゴリ別3D＋ラベル）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- A-Frame + AR.js（午前中に動いていた組み合わせ） -->
+  <!-- A-Frame + AR.js -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.1/aframe/build/aframe-ar.js"></script>
 
-  <!-- eruda（デバッグ用。不要ならコメントアウトOK） -->
-  <!-- <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-  <script>eruda.init();</script> -->
+  <!-- （任意）デバッグコンソール -->
+  <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+  <script>eruda.init();</script>
 
   <style>
     body { margin:0; overflow:hidden; }
@@ -48,10 +48,10 @@
 </head>
 <body>
 
-  <!-- 左上のGPS表示 -->
+  <!-- 画面左上のGPS表示 -->
   <div id="hud">位置を取得中…</div>
 
-  <!-- ARシーン（午前中と同じ構成） -->
+  <!-- ARシーン（背景カメラ＋3D表示） -->
   <a-scene
     vr-mode-ui="enabled: false"
     embedded
@@ -60,59 +60,56 @@
   >
     <!-- 実機GPSカメラ -->
     <a-camera gps-camera rotation-reader></a-camera>
-
-    <!-- ★デバッグ用の緑箱は削除しました -->
-    <!-- <a-box position="0 0 -2" depth="0.2" height="0.2" width="0.2" color="#00FFAA"></a-box> -->
   </a-scene>
 
   <!-- iPhone用：センサーを明示的に有効化するボタン -->
   <button id="sensorButton">センサーを有効にする</button>
 
 <script>
-/* ========= 1. ログ送信用（GAS） ========= */
+/* ========= 1. GASのURL（必要なければ空文字でもOK） ========= */
 const LOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw_uhqYjG25qdhdrZ6zCZgjTCKPVypqmTcgKenXBtt4LSBCaoARHYSAYxtMEHijY1rSdA/exec';
 
 function sendLog(payload) {
+  if (!LOG_ENDPOINT) return;
   fetch(LOG_ENDPOINT, {
     method: 'POST',
     mode: 'no-cors',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
-  }).catch(err => console.warn('ログ送信失敗:', err));
+  }).catch(err => {
+    console.warn('ログ送信失敗:', err);
+  });
 }
 
-/* ========= 2. カテゴリ定義 ========= */
-const GROUPS = {
-  sightseeing: { label: '観光',        color: '#ff7f7f' },  // 赤系
-  public:      { label: '公共施設',    color: '#7fff7f' },  // 緑系
-  school:      { label: '学校',        color: '#7f7fff' }   // 青系
-};
-
-/* ========= 3. 登録する地点 =========
-   画像は /Index/Picture/ フォルダにある PNG を使用します
-   （GitHub 上のファイル名と大文字小文字まで必ず一致させてください）
+/* ========= 2. 登録する地点 ＋ カテゴリ =========
+   category:
+     'tourism'   … 観光
+     'public'    … 公共施設
+     'school'    … 学校
 */
 const PLACES = [
-  // 観光
-  { id:'TasParkHotel',      name:'タスパークホテル',       lat:38.10148128126027,  lon:140.0433090680094,  radius:50, group:'sightseeing', image:'Index/Picture/TasParkHotel.png' },
-  { id:'MichinoEkiNagai',   name:'道の駅 かわのみなと長井', lat:38.108970970886325, lon:140.04382939078403, radius:50, group:'sightseeing', image:'Index/Picture/MichinoEkiNagai.png' },
-  { id:'Kozakurakan',       name:'小桜館',                  lat:38.110963329145335, lon:140.03632275489852, radius:50, group:'sightseeing', image:'Index/Picture/Kozakurakan.png' },
-  { id:'Marudaiougiya',     name:'丸大扇屋',                lat:38.11228246118919,  lon:140.036198935986,   radius:50, group:'sightseeing', image:'Index/Picture/Marudaiougiya.png' },
-
-  // 公共施設
-  { id:'MinamiNagai',       name:'南長井駅',                lat:38.09769549394771,  lon:140.03458623775896, radius:50, group:'public', image:'Index/Picture/MinamiNagai.png' },
-  { id:'Nagaisiyakusho',    name:'長井市役所',              lat:38.1063333593554,   lon:140.033892868012,   radius:50, group:'public', image:'Index/Picture/Nagaisiyakusho.png' },
-  { id:'Kurunt',            name:'クルント',                lat:38.10491876278905,  lon:140.03466346205656, radius:50, group:'public', image:'Index/Picture/Kurunt.png' },
-
-  // 学校
-  { id:'MNagaiShougakkou',  name:'長井小学校',              lat:38.107796313044474, lon:140.04269068239356, radius:50, group:'school', image:'Index/Picture/MNagaiShougakkou.png' },
-  { id:'NagaiKougyokoukou', name:'長井工業高校',            lat:38.114426209437404, lon:140.03013087985815, radius:50, group:'school', image:'Index/Picture/NagaiKougyokoukou.png' },
-  { id:'Nagaikoukou',       name:'長井高校',                lat:38.097283861825424, lon:140.0380452392042,  radius:50, group:'school', image:'Index/Picture/Nagaikoukou.png' }
+  { id: 'tas-park',          name: 'タスパークホテル',        lat: 38.10148128126027,  lon: 140.0433090680094,  radius: 50, category: 'tourism' },
+  { id: 'MichinoEkiNagai',   name: '道の駅 かわのみなと長井', lat: 38.108970970886325, lon: 140.04382939078403, radius: 50, category: 'public'  },
+  { id: 'MNagaiShougakkou',  name: '長井小学校',              lat: 38.107796313044474, lon: 140.04269068239356, radius: 40, category: 'school'  },
+  { id: 'Kozakurakan',       name: '小桜館',                  lat: 38.110963329145335, lon: 140.03632275489852, radius: 40, category: 'tourism' },
+  { id: 'Marudaiougiya',     name: '丸大扇屋',                lat: 38.11228246118919,  lon: 140.036198935986,   radius: 40, category: 'tourism' },
+  { id: 'Nagaisiyakusho',    name: '長井市役所',              lat: 38.1063333593554,   lon: 140.033892868012,   radius: 40, category: 'public'  },
+  { id: 'NagaiKougyokoukou', name: '長井工業高校',            lat: 38.114426209437404, lon: 140.03013087985815, radius: 40, category: 'school'  },
+  { id: 'Nagaikoukou',       name: '長井高校',                lat: 38.097283861825424, lon: 140.0380452392042,  radius: 40, category: 'school'  },
+  { id: 'MinamiNagai',       name: '南長井駅',                lat: 38.09769549394771,  lon: 140.03458623775896, radius: 40, category: 'public'  },
+  { id: 'Kurunt',            name: 'クルント',                lat: 38.10491876278905,  lon: 140.03466346205656, radius: 40, category: 'public'  }
 ];
+
+/* カテゴリごとの 形＆色＆ラベル */
+const CATEGORY_STYLE = {
+  tourism : { label: '観光',   shape: 'cone',   color: '#ffcc33' },
+  public  : { label: '公共施設', shape: 'box',    color: '#33ccff' },
+  school  : { label: '学校',   shape: 'sphere', color: '#ff6666' }
+};
 
 const hud = document.getElementById('hud');
 
-/* ========= 4. 距離計算 ========= */
+/* ========= 3. 距離をメートルで計算 ========= */
 function distanceMeter(lat1, lon1, lat2, lon2) {
   const R = 6378137;
   const toRad = x => x * Math.PI / 180;
@@ -126,62 +123,78 @@ function distanceMeter(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-/* ========= 5. 各地点用のエンティティを作成 =========
-   ここで「カラーラベル＋写真＋テキスト」を1つの親 <a-entity> にまとめます
-*/
+/* ========= 4. 各地点用の 3Dエンティティをシーンに追加 ========= */
+/*  カメラの少し前 (0,0,-3) に出す。GPS判定はJSで行う。 */
 function createPlaceEntities() {
   const scene = document.querySelector('a-scene');
 
   PLACES.forEach(place => {
-    const groupInfo = GROUPS[place.group] || GROUPS.sightseeing;
-    const parent = document.createElement('a-entity');
-    parent.setAttribute('id', 'place-' + place.id);
-    parent.setAttribute('position', '0 1.5 -3'); // カメラ前 3m くらい
-    parent.setAttribute('visible', 'false');
+    const style = CATEGORY_STYLE[place.category] || CATEGORY_STYLE.tourism;
 
-    // 背景プレート（カテゴリ色）
-    const bg = document.createElement('a-plane');
-    bg.setAttribute('width', '2.6');
-    bg.setAttribute('height', '1.6');
-    bg.setAttribute('color', groupInfo.color);
-    bg.setAttribute('opacity', '0.75');
-    bg.setAttribute('position', '0 0 0'); // 親の中心
-    parent.appendChild(bg);
+    const root = document.createElement('a-entity');
+    root.setAttribute('id', 'place-' + place.id);
+    root.setAttribute('visible', 'false');
+    root.setAttribute('position', '0 0 -3');   // カメラ前3m
+    scene.appendChild(root);
 
-    // 場所名テキスト
-    const title = document.createElement('a-text');
-    title.setAttribute('value', `[${groupInfo.label}] ${place.name}`);
-    title.setAttribute('align', 'center');
-    title.setAttribute('width', '4');
-    title.setAttribute('color', '#ffffff');
-    title.setAttribute('position', '0 0.55 0.01');
-    parent.appendChild(title);
+    // 足元のリング
+    const ring = document.createElement('a-torus');
+    ring.setAttribute('radius', '0.7');
+    ring.setAttribute('radius-tubular', '0.05');
+    ring.setAttribute('rotation', '90 0 0');
+    ring.setAttribute('color', style.color);
+    ring.setAttribute('opacity', '0.9');
+    root.appendChild(ring);
 
-    // 写真（Index/Picture の PNG）
-    const img = document.createElement('a-image');
-    img.setAttribute('src', place.image);
-    img.setAttribute('width', '2.3');
-    img.setAttribute('height', '1.0');
-    img.setAttribute('position', '0 -0.25 0.02');
-    img.setAttribute('material', 'side: double;');
-    parent.appendChild(img);
+    // メインの3D形状（カテゴリごと）
+    let main;
+    switch (style.shape) {
+      case 'box':
+        main = document.createElement('a-box');
+        main.setAttribute('width', '0.8');
+        main.setAttribute('height', '0.8');
+        main.setAttribute('depth', '0.8');
+        break;
+      case 'sphere':
+        main = document.createElement('a-sphere');
+        main.setAttribute('radius', '0.5');
+        break;
+      default: // cone
+        main = document.createElement('a-cone');
+        main.setAttribute('radius-bottom', '0.6');
+        main.setAttribute('radius-top', '0.05');
+        main.setAttribute('height', '1.0');
+        break;
+    }
+    main.setAttribute('position', '0 0.7 0');
+    main.setAttribute('color', style.color);
+    main.setAttribute('opacity', '0.95');
+    root.appendChild(main);
 
-    /* 将来 GLB を置く場合の例（今は使わないのでコメント）
-    const model = document.createElement('a-entity');
-    model.setAttribute('gltf-model', `Index/3DModel/${place.id}.glb`);
-    model.setAttribute('position', '0 -1 0.05');
-    model.setAttribute('scale', '0.5 0.5 0.5');
-    parent.appendChild(model);
-    */
+    // ラベル背景
+    const labelBg = document.createElement('a-plane');
+    labelBg.setAttribute('position', '0 1.5 0');
+    labelBg.setAttribute('width', '3.0');
+    labelBg.setAttribute('height', '0.55');
+    labelBg.setAttribute('color', '#000');
+    labelBg.setAttribute('opacity', '0.65');
+    root.appendChild(labelBg);
 
-    scene.appendChild(parent);
+    // ラベル文字（場所名＋カテゴリ）
+    const label = document.createElement('a-text');
+    label.setAttribute('value', `${place.name} （${style.label}）`);
+    label.setAttribute('align', 'center');
+    label.setAttribute('color', '#fff');
+    label.setAttribute('width', '4.5');
+    label.setAttribute('position', '0 0 0.01');
+    labelBg.appendChild(label);
 
-    // 状態フラグ
+    place._entity = root;
     place._isInside = false;
   });
 }
 
-/* ========= 6. GPS 監視して表示/非表示を制御 ========= */
+/* ========= 5. GPSを監視して表示・ログ送信 ========= */
 let lastPos = null;
 let lastSentAt = 0;
 
@@ -198,26 +211,46 @@ function startGPSWatch() {
       const acc = pos.coords.accuracy;
       lastPos = { lat, lon, acc };
 
-      hud.textContent =
-        `📍 現在のGPS\nlat: ${lat.toFixed(6)}\nlon: ${lon.toFixed(6)}\n精度: ±${acc.toFixed(1)}m`;
+      let nearest = null;
+      let nearestDist = Infinity;
 
+      // 各地点への距離と表示制御
       PLACES.forEach(place => {
         const dist = distanceMeter(lat, lon, place.lat, place.lon);
-        const parent = document.getElementById('place-' + place.id);
-        if (!parent) return;
-
+        const entity = place._entity;
         const isNear = dist <= place.radius;
 
-        parent.setAttribute('visible', isNear);
+        if (entity) {
+          entity.setAttribute('visible', isNear);
+        }
 
+        // 出入りログ
         if (!place._isInside && isNear) {
-          sendLog({ place_id: place.id, event: 'enter', lat, lon, dist });
+          sendLog({ place_id: place.id, event: 'enter', lat, lon });
         }
         if (place._isInside && !isNear) {
-          sendLog({ place_id: place.id, event: 'leave', lat, lon, dist });
+          sendLog({ place_id: place.id, event: 'leave', lat, lon });
         }
         place._isInside = isNear;
+
+        // 最も近い地点
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearest = place;
+        }
       });
+
+      const nearestLine = nearest
+        ? `nearest: ${nearest.name}（約${nearestDist.toFixed(1)}m）`
+        : 'nearest: -';
+
+      hud.textContent =
+        `📍 現在のGPS` +
+        `\nlat: ${lat.toFixed(6)}` +
+        `\nlon: ${lon.toFixed(6)}` +
+        `\n精度: ±${acc.toFixed(1)}m` +
+        `\n\n${nearestLine}`;
+
     },
     (err) => {
       hud.textContent = '位置情報が取得できません（' + err.message + '）';
@@ -226,7 +259,7 @@ function startGPSWatch() {
     { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
   );
 
-  // 5秒ごとに「いまここ」をログ
+  // 5秒ごとに「いまここ」を送る（任意）
   setInterval(() => {
     if (!lastPos) return;
     const now = Date.now();
@@ -242,7 +275,7 @@ function startGPSWatch() {
   }, 5000);
 }
 
-/* ========= 7. iPhone向けセンサー許可ボタン ========= */
+/* ========= 6. iPhone向けセンサー許可ボタン ========= */
 const sensorButton = document.getElementById('sensorButton');
 
 sensorButton.addEventListener('click', async () => {
@@ -259,14 +292,15 @@ sensorButton.addEventListener('click', async () => {
       alert('センサー許可リクエスト中にエラー: ' + e);
     }
   } else {
-    sensorButton.remove(); // Android 等では不要
+    // AndroidやPCなどでは不要
+    sensorButton.remove();
   }
 });
 
-/* ========= 8. 初期化 ========= */
+/* ========= 7. 初期化 ========= */
 window.addEventListener('load', () => {
-  createPlaceEntities();  // PNG＋カラーラベルを生成
-  startGPSWatch();        // GPS監視開始
+  createPlaceEntities();
+  startGPSWatch();
 });
 </script>
 
