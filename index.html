@@ -1,112 +1,65 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8" />
-  <title>走行ログ地図ビューア</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <style>
-    html, body { height: 100%; margin: 0; padding: 0; font-family: sans-serif; }
-    #map { height: 100%; width: 100%; }
-    #panel {
-      position: fixed;
-      top: 10px; left: 10px;
-      background: rgba(0,0,0,0.6);
-      color: #fff;
-      padding: 8px 12px;
-      border-radius: 6px;
-      z-index: 9999;
+      await sys?.arSource?.start();
+      setStatus('camera-init');
+    } catch(e){
+      setStatus('manual camera-start failed: '+e.message);
     }
-  </style>
+  }, {once:true});
+};
 
-  <!-- ✅ Google Maps APIキーを入れてください -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY"></script>
+// GPS更新で距離を計算し、親の可視を切替
+camEl.addEventListener('gps-camera-update-position', (e)=>{
+  const {position, accuracy=20} = e.detail;
+  const {latitude:lat, longitude:lon} = position;
 
-  <!-- ✅ PapaParse（CSVをJSON化） -->
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-</head>
-<body>
+  hud.latlon.textContent = `lat:${lat.toFixed(6)}  lon:${lon.toFixed(6)}  ±${accuracy.toFixed(1)} m`;
 
-  <div id="panel">🚗 GPSログ地図ビューア</div>
-  <div id="map"></div>
+  // いちばん近いPOI
+  let best = {name:'-', d: Infinity, poi:null};
+  for (const p of POIS){
+    const d = haversine(lat, lon, p.lat, p.lon);
+    if (d < best.d){ best = {name:p.name, d, poi:p}; }
+  }
+  hud.near.textContent = `nearest: ${best.name}`;
+  hud.dist.textContent = `distance: ${isFinite(best.d)?best.d.toFixed(1):'-'} m`;
 
-<script>
-/* ========= 1. スプレッドシート公開CSVのURL ========= */
-// Googleシート → [ファイル] > [共有] > [リンクを知っている全員に閲覧権限を付与]
-// その後URL中の "/edit#gid=" を "/gviz/tq?tqx=out:csv&gid=" に変更
-const CSV_URL = 'https://docs.google.com/spreadsheets/d/1oq1ottoPDNcqE06opb9AhugWJIFvd2JCyn2u9iDqwu4/gviz/tq?tqx=out:csv&gid=0';
+  // 精度に応じてしきい値を自動調整（最低25m）
+  const trigger = Math.max(accuracy * 1.5, 25);
+  if (best.d < trigger){
+    poiRoot.setAttribute('visible', 'true');   // ← 親だけ切替
+    setStatus(`IN-RANGE (< ${trigger.toFixed(0)} m)`);
+  } else {
+    poiRoot.setAttribute('visible', 'false');
+    setStatus('out of range');
+  }
+});
 
-/* ========= 2. 初期設定 ========= */
-let map;
-let markers = [];
-let pathLine;
-
-/* ========= 3. Google Map初期化 ========= */
-function initMap() {
-  map = new google.maps.Map(document.getElementById('map'), {
-    center: { lat: 38.107, lng: 140.043 },
-    zoom: 14,
-    mapTypeId: 'roadmap'
-  });
-
-  loadCSVData();
-  setInterval(loadCSVData, 5000); // 5秒ごとに更新
+function haversine(lat1, lon1, lat2, lon2){
+  const R=6371000, toRad=d=>d*Math.PI/180;
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
-
-/* ========= 4. CSV読み込み・描画 ========= */
-function loadCSVData() {
-  Papa.parse(CSV_URL, {
-    download: true,
-    header: true,
-    complete: function(results) {
-      const rows = results.data.filter(r => r.lat && r.lon);
-
-      if (rows.length === 0) return;
-
-      // 既存マーカー削除
-      markers.forEach(m => m.setMap(null));
-      markers = [];
-
-      const pathCoords = [];
-
-      rows.forEach(row => {
-        const lat = parseFloat(row.lat);
-        const lon = parseFloat(row.lon);
-        const event = row.event || '';
-        const time = row.timestamp || '';
-
-        pathCoords.push({ lat, lng: lon });
-
-        // マーカー追加
-        const marker = new google.maps.Marker({
-          position: { lat, lng: lon },
-          map: map,
-          title: `${time}\n${event}`
-        });
-        markers.push(marker);
-      });
-
-      // 折れ線で経路表示
-      if (pathLine) pathLine.setMap(null);
-      pathLine = new google.maps.Polyline({
-        path: pathCoords,
-        geodesic: true,
-        strokeColor: '#FF0000',
-        strokeOpacity: 0.8,
-        strokeWeight: 3,
-        map: map
-      });
-
-      // 最新位置へ移動
-      const latest = pathCoords[pathCoords.length - 1];
-      map.panTo(latest);
-    }
-  });
-}
-
-/* ========= 5. 起動 ========= */
-window.onload = initMap;
 </script>
-
 </body>
 </html>
+
+
+うまくいかない時の判断ポイント（ここだけ見れば原因が分かります）
+
+
+HUDが camera-init に到達しない → 端末/ブラウザ状態（タブ・権限・プライベート・WebGL/WebXR）。
+
+
+camera-init は出たが lat/lon が - のまま → 屋内でGPSが入っていない。
+
+
+distance が数百 m のまま / 近づいても表示されない → トリガーが厳しい or 親の可視切替対象ミス。
+
+
+
+
+「午前中は動いた」のは事実です。その時の“状態”を上の手順で忠実に復元し、
+さらに最小構成コードに戻せば、再現できます。
+そこからカテゴリ分けやGLB/音声を親の可視切替を守りつつ段階的に足していけばOKです。
+
