@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>GPSトリガーAR（カテゴリ別3D）</title>
+  <title>GPSトリガーAR（GLB＋カテゴリ）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- A-Frame + AR.js -->
@@ -58,14 +58,16 @@
   >
     <!-- 実機GPSカメラ -->
     <a-camera gps-camera rotation-reader></a-camera>
-    <!-- ★デバッグ用 a-box は削除しました -->
+
+    <!-- 常に見えているデバッグ用の小さな箱（そのまま残してあります） -->
+    <a-box position="0 0 -2" depth="0.2" height="0.2" width="0.2" color="#00FFAA"></a-box>
   </a-scene>
 
   <!-- iPhone用：センサーを明示的に有効化するボタン -->
   <button id="sensorButton">センサーを有効にする</button>
 
 <script>
-/* ========= 1. GASのURL（そのまま） ========= */
+/* ========= 1. GASのURL ========= */
 const LOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw_uhqYjG25qdhdrZ6zCZgjTCKPVypqmTcgKenXBtt4LSBCaoARHYSAYxtMEHijY1rSdA/exec';
 
 function sendLog(payload) {
@@ -79,44 +81,63 @@ function sendLog(payload) {
   });
 }
 
-/* ========= 2. カテゴリ付きの地点情報 =========
-   category:
-     'tourism'  …… 観光
-     'public'   …… 公共施設
-     'school'   …… 学校
+/* ========= 2. 登録する地点 =========
+   category: 'tourism' | 'public' | 'school'
 */
 const PLACES = [
   // 観光
-  { id: 'Marudaiougiya',     name: '丸大扇屋',      lat: 38.11228246118919,  lon: 140.036198935986,   radius: 50 category: 'tourism' },
-  { id: 'Kozakurakan',       name: '小桜館',        lat: 38.110963329145335, lon: 140.03632275489852, radius: 50category: 'tourism' },
-  { id: 'tas-park',          name: 'タスパークホテル', lat: 38.10148128126027, lon: 140.0433090680094, radius: 50 category: 'tourism' },
+  { id:'tas-park',          name:'タスパークホテル',
+    lat:38.10148128126027,  lon:140.0433090680094, radius:50,
+    model:'./Index/3DModel/Tas.glb',           category:'tourism' },
+
+  { id:'Marudaiougiya',     name:'丸大扇屋',
+    lat:38.11228246118919,  lon:140.036198935986, radius:40,
+    model:'./Index/3DModel/Maru.glb',          category:'tourism' },
+
+  { id:'Kozakurakan',       name:'小桜館',
+    lat:38.110963329145335, lon:140.03632275489852, radius:40,
+    model:'./Index/3DModel/Kozakura.glb',      category:'tourism' },
 
   // 公共施設
-  { id: 'MichinoEkiNagai',   name: '道の駅 かわのみなと長井', lat: 38.108970970886325, lon: 140.04382939078403, radius: 20, category: 'public' },
-  { id: 'Nagaisiyakusho',    name: '長井市役所',     lat: 38.1063333593554,   lon: 140.033892868012,   radius: 50, category: 'public' },
-  { id: 'MinamiNagai',       name: '南長井駅',       lat: 38.09769549394771,  lon: 140.03458623775896, radius: 50, category: 'public' },
-  { id: 'Kurunt',            name: 'クルント',       lat: 38.10491876278905,  lon: 140.03466346205656, radius: 50, category: 'public' },
+  { id:'MichinoEkiNagai',   name:'道の駅 かわのみなと長井',
+    lat:38.108970970886325, lon:140.04382939078403, radius:50,
+    model:'./Index/3DModel/Kawa.glb',          category:'public' },
+
+  { id:'Nagaisiyakusho',    name:'長井市役所',
+    lat:38.1063333593554,   lon:140.033892868012, radius:40,
+    model:'./Index/3DModel/Nagaisiyakusho.glb', category:'public' },
+
+  { id:'MinamiNagai',       name:'南長井駅',
+    lat:38.09769549394771,  lon:140.03458623775896, radius:40,
+    model:'./Index/3DModel/MinamiNagai.glb',   category:'public' },
+
+  { id:'Kurunt',            name:'クルント',
+    lat:38.10491876278905,  lon:140.03466346205656, radius:40,
+    model:'./Index/3DModel/Kurunt.glb',        category:'public' },
 
   // 学校
-  { id: 'NagaiKougyokoukou', name: '長井工業高校',   lat: 38.114426209437404, lon: 140.03013087985815, radius: 50, category: 'school' },
-  { id: 'Nagaikoukou',       name: '長井高校',       lat: 38.097283861825424, lon: 140.0380452392042,  radius: 50, category: 'school' }
+  { id:'MNagaiShougakkou',  name:'長井小学校',
+    lat:38.107796313044474, lon:140.04269068239356, radius:40,
+    model:'./Index/3DModel/Nagaishou.glb',     category:'school' },
+
+  { id:'NagaiKougyokoukou', name:'長井工業高校',
+    lat:38.114426209437404, lon:140.03013087985815, radius:40,
+    model:'./Index/3DModel/NagaiKougyo.glb',   category:'school' },
+
+  { id:'Nagaikoukou',       name:'長井高校',
+    lat:38.097283861825424, lon:140.0380452392042, radius:40,
+    model:'./Index/3DModel/NagaiKoukou.glb',   category:'school' },
 ];
 
-/* ========= 2.5 カテゴリごとの形と色 =========
-   - 観光: 立方体（box） + オレンジ
-   - 公共施設: 円錐（cone） + 青
-   - 学校: 球（sphere） + 緑
-   （必要なら値だけ変えればOKです）
-*/
-const CATEGORY_STYLE = {
-  tourism: { primitive: 'box',    color: '#ff9933' },
-  public:  { primitive: 'cone',   color: '#3399ff' },
-  school:  { primitive: 'sphere', color: '#66cc66' }
+const CATEGORY_COLOR = {
+  tourism: '#ffb347', // 観光 → オレンジ
+  public : '#4da6ff', // 公共施設 → 青
+  school : '#7bff7b'  // 学校 → 緑
 };
 
 const hud = document.getElementById('hud');
 
-/* ========= 3. 距離 ========= */
+/* ========= 3. 距離をメートルで計算 ========= */
 function distanceMeter(lat1, lon1, lat2, lon2) {
   const R = 6378137;
   const toRad = x => x * Math.PI / 180;
@@ -130,47 +151,41 @@ function distanceMeter(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-/* ========= 4. 各地点用の3Dエンティティ生成 =========
-   カメラの前 3m あたりにポップ表示
-*/
+/* ========= 4. 各地点の GLB＋ラベルをシーンに追加 ========= */
 function createPlaceEntities() {
   const scene = document.querySelector('a-scene');
 
   PLACES.forEach(place => {
-    const style = CATEGORY_STYLE[place.category] || CATEGORY_STYLE.tourism;
+    const wrapper = document.createElement('a-entity');
+    wrapper.setAttribute('id', 'place-' + place.id);
+    // カメラの少し前に固定（ワールド固定ではなく「その場所にいる間だけ前に出る」方式）
+    wrapper.setAttribute('position', '0 0 -3');
+    wrapper.setAttribute('visible', 'false');
 
-    // 親（場所全体）: 位置と visible をまとめて制御
-    const root = document.createElement('a-entity');
-    root.setAttribute('id', 'place-' + place.id);
-    root.setAttribute('position', '0 1.5 -3'); // カメラ前3m
-    root.setAttribute('visible', 'false');
+    // GLBモデル本体
+    const model = document.createElement('a-entity');
+    model.setAttribute('gltf-model', place.model);
+    model.setAttribute('position', '0 0 0');
+    model.setAttribute('scale', '1 1 1'); // 必要に応じて縮尺調整
+    wrapper.appendChild(model);
 
-    // 3D形状
-    const marker = document.createElement('a-entity');
-    marker.setAttribute('geometry',
-      `primitive: ${style.primitive}; height:0.7; width:0.7; depth:0.7; radius:0.45;`
-    );
-    marker.setAttribute('material', `color: ${style.color}; opacity: 0.9;`);
-    marker.setAttribute('position', '0 0 0');
-    root.appendChild(marker);
-
-    // テキスト（場所名）
+    // 場所名ラベル
     const label = document.createElement('a-text');
     label.setAttribute('value', place.name);
     label.setAttribute('align', 'center');
-    label.setAttribute('color', '#ffffff');
-    label.setAttribute('width', '4');
-    label.setAttribute('position', '0 0.8 0'); // マーカーの少し上
-    label.setAttribute('anchor', 'center');
-    root.appendChild(label);
+    label.setAttribute('position', '0 1.5 0');
+    label.setAttribute('color', CATEGORY_COLOR[place.category] || '#ffffff');
+    label.setAttribute('width', '3');
+    wrapper.appendChild(label);
 
-    scene.appendChild(root);
+    scene.appendChild(wrapper);
 
+    // 範囲内フラグ
     place._isInside = false;
   });
 }
 
-/* ========= 5. GPS監視して表示・ログ送信 ========= */
+/* ========= 5. GPSを監視して表示・ログ送信 ========= */
 let lastPos = null;
 let lastSentAt = 0;
 
@@ -192,11 +207,11 @@ function startGPSWatch() {
 
       PLACES.forEach(place => {
         const dist = distanceMeter(lat, lon, place.lat, place.lon);
-        const root = document.getElementById('place-' + place.id);
+        const entity = document.getElementById('place-' + place.id);
         const isNear = dist <= place.radius;
 
-        if (root) {
-          root.setAttribute('visible', isNear);
+        if (entity) {
+          entity.setAttribute('visible', isNear);
         }
 
         if (!place._isInside && isNear) {
@@ -216,7 +231,7 @@ function startGPSWatch() {
     { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
   );
 
-  // 5秒ごとの位置ログ
+  // 5秒ごとに現在位置ログ
   setInterval(() => {
     if (!lastPos) return;
     const now = Date.now();
