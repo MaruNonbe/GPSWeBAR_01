@@ -32,14 +32,6 @@
   <!-- カメラ -->
   <a-camera id="camera" gps-camera rotation-reader></a-camera>
 
-  <!-- ここに選択された画像を表示（カメラ前3m） -->
-  <a-image id="popupImage"
-           position="0 1.5 -3"
-           width="2" height="1"
-           visible="false"
-           look-at="[gps-camera]">
-  </a-image>
-
 </a-scene>
 
 
@@ -48,13 +40,13 @@
 const PLACES = [
   { name:'タスパークホテル',
     lat:38.10148128126027, lon:140.0433090680094,
-    radius:50,
+    radius:100,
     img:'Index/Picture/TasParkHotel.png'
   },
 
   { name:'道の駅 かわのみなと長井',
     lat:38.108970970886325, lon:140.04382939078403,
-    radius:50,
+    radius:100,
     img:'Index/Picture/MichinoEkiNagai.png'
   },
 
@@ -108,10 +100,9 @@ const PLACES = [
 ];
 
 const hud = document.getElementById("hud");
-const popup = document.getElementById("popupImage");
 
 
-/* ====== 2. 距離計算（修正版） ====== */
+/* ====== 位置計算 ====== */
 function distanceMeter(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const toRad = d => d * Math.PI / 180;
@@ -126,7 +117,19 @@ function distanceMeter(lat1, lon1, lat2, lon2) {
 }
 
 
-/* ====== 3. GPS監視：到達したら3m前に画像表示 ====== */
+/* ====== 2. popupImageを“カメラの子”として作成 ====== */
+const cameraEl = document.getElementById("camera");
+
+const popup = document.createElement("a-image");
+popup.setAttribute("id", "popupImage");
+popup.setAttribute("position", "0 1.5 -3");   // ← カメラ前3m固定
+popup.setAttribute("width", "2");
+popup.setAttribute("height", "1");
+popup.setAttribute("visible", "false");
+cameraEl.appendChild(popup);  // ★ カメラの子にする
+
+
+/* ====== 3. GPS監視・範囲内で表示 ====== */
 navigator.geolocation.watchPosition(
   pos => {
     const lat = pos.coords.latitude;
@@ -145,7 +148,6 @@ navigator.geolocation.watchPosition(
       }
 
       if (d <= p.radius) {
-        // 半径内 → 画像を表示（カメラ前3m）
         popup.setAttribute("src", p.img);
         popup.setAttribute("visible", "true");
       }
