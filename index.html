@@ -29,13 +29,21 @@
   arjs="sourceType: webcam; debugUIEnabled:false;"
   renderer="alpha:true; antialias:true">
 
-  <!-- カメラ -->
-  <a-camera id="camera" gps-camera rotation-reader></a-camera>
+  <!-- gps-camera。中に popupImage をぶら下げる -->
+  <a-camera id="camera" gps-camera rotation-reader>
+    <!-- カメラの前 3m の固定位置に表示される画像 -->
+    <a-image id="popupImage"
+             position="0 1.5 -3"
+             width="3"
+             height="1.5"
+             visible="false">
+    </a-image>
+  </a-camera>
 
 </a-scene>
 
 <script>
-/* ====== 対象地点 ====== */
+// ====== 1. 設定地点（距離と画像） ======
 const PLACES = [
   { name:'タスパークホテル',
     lat:38.10148128126027, lon:140.0433090680094,
@@ -66,75 +74,98 @@ const PLACES = [
     lat:38.1063333593554, lon:140.033892868012,
     radius:100,
     img:'Index/Picture/Nagaisiyakusho.png'
+  },
+  { name:'長井工業高校',
+    lat:38.114426209437404, lon:140.03013087985815,
+    radius:100,
+    img:'Index/Picture/NagaiKougyokoukou.png'
+  },
+  { name:'長井高校',
+    lat:38.097283861825424, lon:140.0380452392042,
+    radius:100,
+    img:'Index/Picture/Nagaikoukou.png'
+  },
+  { name:'南長井駅',
+    lat:38.09769549394771, lon:140.03458623775896,
+    radius:100,
+    img:'Index/Picture/MinamiNagai.png'
+  },
+  { name:'クルント',
+    lat:38.10491876278905, lon:140.03466346205656,
+    radius:100,
+    img:'Index/Picture/Kurunt.png'
   }
 ];
 
-/* ====== HUD ====== */
-const hud = document.getElementById("hud");
+const hud   = document.getElementById("hud");
+const popup = document.getElementById("popupImage");
 
-/* ====== 距離計算 ====== */
+// ====== 距離計算 ======
 function distanceMeter(lat1, lon1, lat2, lon2) {
-  const R = 6371000;                   // 地球半径[m]
+  const R = 6371000;
   const toRad = d => d * Math.PI / 180;
-
   const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);     // ★ 経度どうしの差に修正
-
+  const dLon = toRad(lon2 - lon1);
   const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-    Math.sin(dLon / 2) ** 2;
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;                        // 距離[m]
+    Math.sin(dLat/2)**2 +
+    Math.cos(toRad(lat1))*Math.cos(toRad(lat2)) *
+    Math.sin(dLon/2)**2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
 }
 
-/* ====== 3m前に固定画像を配置 ====== */
-const cameraEl = document.getElementById("camera");
-
-const popup = document.createElement("a-image");
-popup.setAttribute("id", "popupImage");
-popup.setAttribute("position", "0 1.5 -3");   // ← 修正ポイント
-popup.setAttribute("width", "3");
-popup.setAttribute("height", "1.5");
-popup.setAttribute("visible", "false");
-cameraEl.appendChild(popup);
-
-
-/* ====== GPS監視 ====== */
+// ====== GPS監視・範囲内で画像表示 ======
 navigator.geolocation.watchPosition(
   pos => {
     const lat = pos.coords.latitude;
     const lon = pos.coords.longitude;
     const acc = pos.coords.accuracy;
 
-    let nearestName = "";
-    let nearestDist = 999999;
+    let nearestPlace = null;
+    let nearestDist  = Number.POSITIVE_INFINITY;
+    let activePlace  = null;
 
     PLACES.forEach(p => {
       const d = distanceMeter(lat, lon, p.lat, p.lon);
 
+      // 最も近い地点
       if (d < nearestDist) {
-        nearestName = p.name;
-        nearestDist = d;
+        nearestDist  = d;
+        nearestPlace = p;
       }
 
+      // radius 内に入った地点（最後にマッチしたものを採用）
       if (d <= p.radius) {
-        popup.setAttribute("src", p.img);
-        popup.setAttribute("visible", "true");
+        activePlace = p;
       }
     });
 
-    hud.textContent =
-      `📍 現在のGPS\nlat: ${lat.toFixed(6)}\nlon: ${lon.toFixed(6)}\n精度: ±${acc.toFixed(1)}m\n\n` +
-      `nearest: ${nearestName}（約${nearestDist.toFixed(1)}m）`;
-  },
+    // 画像の表示／非表示
+    if (activePlace) {
+      popup.setAttribute("src", activePlace.img);
+      popup.setAttribute("visible", "true");
+    } else {
+      popup.setAttribute("visible", "false");
+    }
 
+    // HUD 表示
+    let nearestText = "nearest: ー";
+    if (nearestPlace && nearestDist < 1_000_000) {
+      nearestText =
+        `nearest: ${nearestPlace.name}（約${nearestDist.toFixed(1)}m）`;
+    }
+
+    hud.textContent =
+      `📍 現在のGPS\n` +
+      `lat: ${lat.toFixed(6)}\n` +
+      `lon: ${lon.toFixed(6)}\n` +
+      `精度: ±${acc.toFixed(1)}m\n\n` +
+      nearestText;
+  },
   err => {
     hud.textContent = "GPS取得エラー: " + err.message;
   },
-
-  { enableHighAccuracy:true, timeout:30000, maximumAge:0 }
+  { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
 );
 </script>
 
