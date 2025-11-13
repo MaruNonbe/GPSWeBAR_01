@@ -2,8 +2,8 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>GPS画像AR（Index/Picture版）</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GPS → カメラ前3m AR画像</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <!-- A-Frame + AR.js -->
   <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
@@ -12,178 +12,154 @@
   <style>
     body { margin:0; overflow:hidden; }
     #hud {
-      position: fixed;
-      top: 8px;
-      left: 8px;
-      z-index: 9999;
-      background: rgba(0,0,0,0.55);
-      color: #fff;
-      font-size: 12px;
-      line-height: 1.4;
-      padding: 6px 8px;
-      border-radius: 4px;
-      max-width: 90vw;
-      white-space: pre-line;
+      position:fixed; top:8px; left:8px; z-index:9999;
+      background:rgba(0,0,0,0.55); color:#fff;
+      padding:6px 8px; font-size:12px; border-radius:4px;
+      white-space:pre-line;
     }
   </style>
 </head>
 <body>
 
-  <!-- 左上のGPS表示 -->
-  <div id="hud">位置を取得中…</div>
+<div id="hud">GPS取得中…</div>
 
-  <!-- ARシーン -->
-  <a-scene
-    vr-mode-ui="enabled: false"
-    embedded
-    arjs="sourceType: webcam; debugUIEnabled: false;"
-    renderer="antialias: true; alpha: true"
-  >
-    <!-- 実機GPSカメラ -->
-    <a-camera gps-camera rotation-reader></a-camera>
+<a-scene
+  embedded
+  vr-mode-ui="enabled:false"
+  arjs="sourceType: webcam; debugUIEnabled:false;"
+  renderer="alpha:true; antialias:true">
 
-    <!-- 動作確認用：常にカメラ前に見える小さな箱 -->
-    <a-box position="0 0 -2"
-           depth="0.2" height="0.2" width="0.2"
-           color="#00FFAA"></a-box>
-  </a-scene>
+  <!-- カメラ -->
+  <a-camera id="camera" gps-camera rotation-reader></a-camera>
+
+  <!-- ここに選択された画像を表示（カメラ前3m） -->
+  <a-image id="popupImage"
+           position="0 1.5 -3"
+           width="2" height="1"
+           visible="false"
+           look-at="[gps-camera]">
+  </a-image>
+
+</a-scene>
+
 
 <script>
-/* ========= 1. 登録地点と画像（Index/Picture） ========= */
+/* ====== 1. 設定地点（距離と画像） ======= */
 const PLACES = [
-  { id:'tas-park',          name:'タスパークホテル',
-    lat:38.10148128126027,  lon:140.0433090680094,
-    radius:50, img:'Index/Picture/TasParkHotel.png' },
+  { name:'タスパークホテル',
+    lat:38.10148128126027, lon:140.0433090680094,
+    radius:50,
+    img:'Index/Picture/TasParkHotel.png'
+  },
 
-  { id:'MichinoEkiNagai',   name:'道の駅 かわのみなと長井',
+  { name:'道の駅 かわのみなと長井',
     lat:38.108970970886325, lon:140.04382939078403,
-    radius:50, img:'Index/Picture/MichinoEkiNagai.png' },
+    radius:50,
+    img:'Index/Picture/MichinoEkiNagai.png'
+  },
 
-  { id:'MNagaiShougakkou',  name:'長井小学校',
+  { name:'長井小学校',
     lat:38.107796313044474, lon:140.04269068239356,
-    radius:50, img:'Index/Picture/MNagaiShougakkou.png' },
+    radius:100,
+    img:'Index/Picture/MNagaiShougakkou.png'
+  },
 
-  { id:'Kozakurakan',       name:'小桜館',
+  { name:'小桜館',
     lat:38.110963329145335, lon:140.03632275489852,
-    radius:50, img:'Index/Picture/Kozakurakan.png' },
+    radius:100,
+    img:'Index/Picture/Kozakurakan.png'
+  },
 
-  { id:'Marudaiougiya',     name:'丸大扇屋',
-    lat:38.11228246118919,  lon:140.036198935986,
-    radius:50, img:'Index/Picture/Marudaiougiya.png' },
+  { name:'丸大扇屋',
+    lat:38.11228246118919, lon:140.036198935986,
+    radius:100,
+    img:'Index/Picture/Marudaiougiya.png'
+  },
 
-  { id:'Nagaisiyakusho',    name:'長井市役所',
-    lat:38.1063333593554,   lon:140.033892868012,
-    radius:50, img:'Index/Picture/Nagaisiyakusho.png' },
+  { name:'長井市役所',
+    lat:38.1063333593554, lon:140.033892868012,
+    radius:100,
+    img:'Index/Picture/Nagaisiyakusho.png'
+  },
 
-  { id:'NagaiKougyokoukou', name:'長井工業高校',
+  { name:'長井工業高校',
     lat:38.114426209437404, lon:140.03013087985815,
-    radius:50, img:'Index/Picture/NagaiKougyokoukou.png' },
+    radius:100,
+    img:'Index/Picture/NagaiKougyokoukou.png'
+  },
 
-  { id:'Nagaikoukou',       name:'長井高校',
+  { name:'長井高校',
     lat:38.097283861825424, lon:140.0380452392042,
-    radius:50, img:'Index/Picture/Nagaikoukou.png' },
+    radius:100,
+    img:'Index/Picture/Nagaikoukou.png'
+  },
 
-  { id:'MinamiNagai',       name:'南長井駅',
-    lat:38.09769549394771,  lon:140.03458623775896,
-    radius:50, img:'Index/Picture/MinamiNagai.png' },
+  { name:'南長井駅',
+    lat:38.09769549394771, lon:140.03458623775896,
+    radius:100,
+    img:'Index/Picture/MinamiNagai.png'
+  },
 
-  { id:'Kurunt',            name:'クルント',
-    lat:38.10491876278905,  lon:140.03466346205656,
-    radius:50, img:'Index/Picture/Kurunt.png' }
+  { name:'クルント',
+    lat:38.10491876278905, lon:140.03466346205656,
+    radius:100,
+    img:'Index/Picture/Kurunt.png'
+  }
 ];
 
-const hud = document.getElementById('hud');
+const hud = document.getElementById("hud");
+const popup = document.getElementById("popupImage");
 
-/* ========= 2. 距離計算（m）★修正版★ ========= */
+
+/* ====== 2. 距離計算（修正版） ====== */
 function distanceMeter(lat1, lon1, lat2, lon2) {
-  const R = 6371000;                    // 地球半径[m]
-  const toRad = d => d * Math.PI / 180; // 度→ラジアン
-
+  const R = 6371000;
+  const toRad = d => d * Math.PI / 180;
   const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);      // ← ここを lon2-lon1 に修正
-
+  const dLon = toRad(lon2 - lon1);
   const a =
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-
+    Math.sin(dLat/2)**2 +
+    Math.cos(toRad(lat1))*Math.cos(toRad(lat2)) *
+    Math.sin(dLon/2)**2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   return R * c;
 }
 
-/* ========= 3. 各地点ごとの a-image を作成 ========= */
-function createPlaceEntities() {
-  const scene = document.querySelector('a-scene');
 
-  PLACES.forEach(place => {
-    const img = document.createElement('a-image');
-    img.setAttribute('id', 'place-' + place.id);
-    img.setAttribute('gps-entity-place',
-      `latitude: ${place.lat}; longitude: ${place.lon};`);
-    img.setAttribute('src', place.img);
-    img.setAttribute('look-at', '[gps-camera]');
-    img.setAttribute('scale', '10 5 1');
-    img.setAttribute('visible', 'false');
-    scene.appendChild(img);
+/* ====== 3. GPS監視：到達したら3m前に画像表示 ====== */
+navigator.geolocation.watchPosition(
+  pos => {
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+    const acc = pos.coords.accuracy;
 
-    place._isInside = false;
-  });
-}
+    let nearestName = "";
+    let nearestDist = 999999;
 
-/* ========= 4. GPS監視：一定距離内で画像を表示 ========= */
-function startGPSWatch() {
-  if (!navigator.geolocation) {
-    hud.textContent = 'このブラウザではGPSが利用できません';
-    return;
-  }
+    PLACES.forEach(p => {
+      const d = distanceMeter(lat, lon, p.lat, p.lon);
 
-  navigator.geolocation.watchPosition(
-    (pos) => {
-      const lat = pos.coords.latitude;
-      const lon = pos.coords.longitude;
-      const acc = pos.coords.accuracy;
+      if (d < nearestDist) {
+        nearestName = p.name;
+        nearestDist = d;
+      }
 
-      // 最寄り地点を探す
-      let nearestName = 'なし';
-      let nearestDist = Infinity;
+      if (d <= p.radius) {
+        // 半径内 → 画像を表示（カメラ前3m）
+        popup.setAttribute("src", p.img);
+        popup.setAttribute("visible", "true");
+      }
+    });
 
-      PLACES.forEach(place => {
-        const dist = distanceMeter(lat, lon, place.lat, place.lon);
-        const entity = document.getElementById('place-' + place.id);
-        const isNear = dist <= place.radius;
-
-        if (entity) {
-          entity.setAttribute('visible', isNear);
-        }
-
-        if (dist < nearestDist) {
-          nearestDist = dist;
-          nearestName = place.name;
-        }
-
-        place._isInside = isNear;
-      });
-
-      hud.textContent =
-        `📍 現在のGPS\n` +
-        `lat: ${lat.toFixed(6)}\n` +
-        `lon: ${lon.toFixed(6)}\n` +
-        `精度: ±${acc.toFixed(1)}m\n\n` +
-        `nearest: ${nearestName}（約${nearestDist.toFixed(1)}m）`;
-    },
-    (err) => {
-      hud.textContent = '位置情報が取得できません（' + err.message + '）';
-      console.warn('GPS取得エラー:', err);
-    },
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
-  );
-}
-
-/* ========= 5. 初期化 ========= */
-window.addEventListener('load', () => {
-  createPlaceEntities();
-  startGPSWatch();
-});
+    hud.textContent =
+      `📍 現在のGPS\nlat: ${lat.toFixed(6)}\nlon: ${lon.toFixed(6)}\n精度: ±${acc.toFixed(1)}m\n\n` +
+      `nearest: ${nearestName}（約${nearestDist.toFixed(1)}m）`;
+  },
+  err => {
+    hud.textContent = "GPS取得エラー: " + err.message;
+  },
+  { enableHighAccuracy:true, timeout:5000, maximumAge:0 }
+);
 </script>
 
 </body>
