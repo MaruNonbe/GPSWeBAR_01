@@ -21,7 +21,7 @@
 </head>
 <body>
 
-<div id="hud">GPS取得中…</div>
+<div id="hud">GPS取得中…（最大30秒かかる場合あり）</div>
 
 <a-scene
   embedded
@@ -34,102 +34,69 @@
 
 </a-scene>
 
-
 <script>
-/* ====== 1. 設定地点（距離と画像） ======= */
+/* ====== 対象地点 ====== */
 const PLACES = [
   { name:'タスパークホテル',
     lat:38.10148128126027, lon:140.0433090680094,
     radius:100,
     img:'Index/Picture/TasParkHotel.png'
   },
-
   { name:'道の駅 かわのみなと長井',
     lat:38.108970970886325, lon:140.04382939078403,
     radius:100,
     img:'Index/Picture/MichinoEkiNagai.png'
   },
-
   { name:'長井小学校',
     lat:38.107796313044474, lon:140.04269068239356,
     radius:100,
     img:'Index/Picture/MNagaiShougakkou.png'
   },
-
   { name:'小桜館',
     lat:38.110963329145335, lon:140.03632275489852,
     radius:100,
     img:'Index/Picture/Kozakurakan.png'
   },
-
   { name:'丸大扇屋',
     lat:38.11228246118919, lon:140.036198935986,
     radius:100,
     img:'Index/Picture/Marudaiougiya.png'
   },
-
   { name:'長井市役所',
     lat:38.1063333593554, lon:140.033892868012,
     radius:100,
     img:'Index/Picture/Nagaisiyakusho.png'
-  },
-
-  { name:'長井工業高校',
-    lat:38.114426209437404, lon:140.03013087985815,
-    radius:100,
-    img:'Index/Picture/NagaiKougyokoukou.png'
-  },
-
-  { name:'長井高校',
-    lat:38.097283861825424, lon:140.0380452392042,
-    radius:100,
-    img:'Index/Picture/Nagaikoukou.png'
-  },
-
-  { name:'南長井駅',
-    lat:38.09769549394771, lon:140.03458623775896,
-    radius:100,
-    img:'Index/Picture/MinamiNagai.png'
-  },
-
-  { name:'クルント',
-    lat:38.10491876278905, lon:140.03466346205656,
-    radius:100,
-    img:'Index/Picture/Kurunt.png'
   }
 ];
 
+/* ====== HUD ====== */
 const hud = document.getElementById("hud");
 
-
-/* ====== 位置計算 ====== */
+/* ====== 距離計算 ====== */
 function distanceMeter(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const toRad = d => d * Math.PI / 180;
   const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
+  const dLon = toRad(lat2 - lon1);
   const a =
     Math.sin(dLat/2)**2 +
     Math.cos(toRad(lat1))*Math.cos(toRad(lat2)) *
     Math.sin(dLon/2)**2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-
-/* ====== 2. popupImageを“カメラの子”として作成 ====== */
+/* ====== 3m前に固定画像を配置 ====== */
 const cameraEl = document.getElementById("camera");
 
 const popup = document.createElement("a-image");
 popup.setAttribute("id", "popupImage");
-popup.setAttribute("position", "0 1.5 -5);   // ← カメラ前3m固定
+popup.setAttribute("position", "0 1.5 -3");  // ← カメラ前3m確定
 popup.setAttribute("width", "3");
 popup.setAttribute("height", "1.5");
 popup.setAttribute("visible", "false");
-cameraEl.appendChild(popup);  // ★ カメラの子にする
+cameraEl.appendChild(popup);
 
-
-/* ====== 3. GPS監視・範囲内で表示 ====== */
+/* ====== GPS監視 ====== */
 navigator.geolocation.watchPosition(
   pos => {
     const lat = pos.coords.latitude;
@@ -157,10 +124,12 @@ navigator.geolocation.watchPosition(
       `📍 現在のGPS\nlat: ${lat.toFixed(6)}\nlon: ${lon.toFixed(6)}\n精度: ±${acc.toFixed(1)}m\n\n` +
       `nearest: ${nearestName}（約${nearestDist.toFixed(1)}m）`;
   },
+
   err => {
     hud.textContent = "GPS取得エラー: " + err.message;
   },
-  { enableHighAccuracy:true, timeout:5000, maximumAge:0 }
+
+  { enableHighAccuracy:true, timeout:30000, maximumAge:0 }
 );
 </script>
 
