@@ -1,0 +1,4 @@
+index03.html:Map+AR完成版
+index02.html:Map+AR完成版
+
+index01.html   :デバイスID＋Leave/Enter,

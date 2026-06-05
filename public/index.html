@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>Nagai GPS AR - Story Teller</title>
+
+  <style>
+    body { margin:0; overflow:hidden; font-family: sans-serif; }
+    #map { position: fixed; left: 0; bottom: 0; width: 100%; height: 30vh; z-index: 500; }
+
+    #infoPanel {
+      position:absolute; top:10px; left:10px; right: 10px;
+      background:rgba(0,0,0,0.7); padding:10px;
+      border-radius:8px; color:#fff; font-size:12px;
+      z-index:1000; display: flex; justify-content: space-between;
+    }
+
+    #stampStatus {
+      position: fixed;
+      bottom: calc(30vh + 80px);
+      right: 15px;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 12px;
+      border-radius: 12px;
+      font-size: 11px;
+      max-height: 40vh;
+      overflow-y: auto;
+      z-index: 1100;
+      width: 180px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      display: none;
+      border: 1px solid #ddd;
+    }
+
+    #toggleBtn {
+      position: fixed;
+      bottom: calc(30vh + 15px);
+      right: 15px;
+      width: 55px;
+      height: 55px;
+      background: #e91e63;
+      color: white;
+      border-radius: 50%;
+      border: none;
+      font-size: 24px;
+      z-index: 1000;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .stamp-item { margin-bottom: 6px; color: #333; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+    .stamp-item.got { color: #e91e63; font-weight: bold; }
+
+    #languagePanel {
+      position: fixed;
+      top: 78px;
+      left: 10px;
+      display: flex;
+      gap: 4px;
+      padding: 5px;
+      background: rgba(17, 24, 39, 0.76);
+      border-radius: 8px;
+      z-index: 1200;
+    }
+
+    .lang-btn {
+      min-width: 42px;
+      height: 30px;
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 6px;
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .lang-btn.active {
+      background: #ffe08a;
+      border-color: #ffe08a;
+      color: #111827;
+    }
+
+    #dataSaverBtn {
+      position: fixed;
+      top: 122px;
+      left: 10px;
+      min-width: 128px;
+      height: 34px;
+      padding: 0 10px;
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.76);
+      color: #fff;
+      font-size: 12px;
+      font-weight: bold;
+      z-index: 1200;
+      cursor: pointer;
+    }
+
+    #dataSaverBtn.active {
+      background: #14b8a6;
+      border-color: #14b8a6;
+      color: #052e2b;
+    }
+
+    body.data-saver #map {
+      display: none;
+    }
+
+    body.data-saver #toggleBtn {
+      bottom: 15px;
+    }
+
+    body.data-saver #stampStatus {
+      bottom: 80px;
+    }
+
+    a-scene { position: fixed !important; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+    video { z-index: -1 !important; }
+  </style>
+
+  <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.1/aframe/build/aframe-ar.js"></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyACib9absBqRW6ErBmjg4_jXcfq-CihVYE&callback=initMap" async defer></script>
+</head>
+
+<body>
+
+  <div id="infoPanel">
+    <div>
+      ID: <span id="id"></span> | <span id="urlId"></span><br>
+      走破: <span id="dist">0.000</span> km<br>
+      現在: <span id="lat">0</span>, <span id="lon">0</span>
+    </div>
+    <div style="text-align: right; font-size: 16px;">
+      スタンプ<br>
+      <span id="stampCount" style="font-weight: bold; color: #ffeb3b;">0</span> / 11
+    </div>
+  </div>
+
+  <div id="languagePanel" aria-label="Language">
+    <button class="lang-btn" data-lang="ja" onclick="setLanguage('ja')">日本語</button>
+    <button class="lang-btn" data-lang="en" onclick="setLanguage('en')">EN</button>
+    <button class="lang-btn" data-lang="zh" onclick="setLanguage('zh')">中文</button>
+    <button class="lang-btn" data-lang="ko" onclick="setLanguage('ko')">한국어</button>
+  </div>
+
+  <button id="dataSaverBtn" onclick="toggleDataSaver()">省通信 OFF</button>
+
+  <button id="toggleBtn" onclick="toggleStamps()">🏆</button>
+
+  <div id="stampStatus">
+    <div style="font-weight:bold; border-bottom:1px solid #ccc; margin-bottom:8px; padding-bottom:5px; display: flex; justify-content: space-between;">
+        <span>スタンプ帳</span>
+        <span onclick="toggleStamps()" style="cursor:pointer; color:#999;">✕</span>
+    </div>
+    <div id="stampList"></div>
+  </div>
+
+  <div id="map"></div>
+
+  <a-scene
+    vr-mode-ui="enabled: false"
+    embedded
+    renderer="logarithmicDepthBuffer: true; antialias: true; alpha: true"
+    arjs="sourceType: webcam; debugUIEnabled: false; facingMode: environment;"
+  >
+    <a-camera gps-camera rotation-reader></a-camera>
+    <a-entity id="plate-container"></a-entity>
+  </a-scene>
+
+  <script>
+  'use strict';
+
+  function toggleStamps() {
+    const statusDiv = document.getElementById('stampStatus');
+    statusDiv.style.display = (statusDiv.style.display === 'none' || statusDiv.style.display === '') ? 'block' : 'none';
+  }
+
+  const PLACES = [
+    {
+      id:'tas-park', lat:38.10148128126027, lon:140.0433090680094, radius:30, model:'./Index/3DModel/Tas.glb',
+      name:{ ja:'タスパークホテル長井', en:'Tas Park Hotel Nagai', zh:'长井塔斯公园酒店', ko:'타스 파크 호텔 나가이' },
+      desc:{
+        ja:'最上川と朝日連峰を望む、長井市のランドマーク的ホテルです。\n宿泊、食事、会議、観光の拠点として、旅人と地域の人を迎えます。',
+        en:'A landmark hotel in Nagai with views of the Mogami River and the Asahi Mountains.\nIt welcomes travelers and locals as a base for stays, dining, meetings, and sightseeing.',
+        zh:'这是一座可眺望最上川和朝日连峰的长井市地标酒店。\n这里是住宿、餐饮、会议和观光的便利据点。',
+        ko:'모가미강과 아사히 연봉을 바라볼 수 있는 나가이시의 랜드마크 호텔입니다.\n숙박, 식사, 회의, 관광의 거점으로 여행자와 지역 주민을 맞이합니다.'
+      }
+    },
+    {
+      id:'michinoeki', lat:38.108970970886325, lon:140.04382939078403, radius:30, model:'./Index/3DModel/Michinoeki.glb',
+      name:{ ja:'道の駅 川のみなと長井', en:'Kawa no Minato Nagai Roadside Station', zh:'川之港长井道之驿', ko:'가와노미나토 나가이 휴게소' },
+      desc:{
+        ja:'最上川舟運の始発港として栄えた港町の記憶を受け継ぐ観光交流センターです。\n観光案内、産直、おみやげ、食事が集まり、まちなか歩きの入口になります。',
+        en:'This tourism center carries the memory of Nagai as a port town on the Mogami River trade route.\nIt offers visitor information, local produce, souvenirs, food, and a good starting point for walking the town.',
+        zh:'这里继承了长井作为最上川舟运港町的历史记忆。\n观光咨询、农产品、伴手礼和餐饮集中于此，是漫步市区的入口。',
+        ko:'모가미강 배 운송의 항구 도시로 번성했던 나가이의 기억을 잇는 관광 교류 시설입니다.\n관광 안내, 직매품, 기념품, 식사가 모여 있어 마을 산책의 출발점이 됩니다.'
+      }
+    },
+    {
+      id:'mnagai-es', lat:38.107796313044474, lon:140.04269068239356, radius:25, model:'./Index/3DModel/NagaiJuniorHishSchool.glb',
+      name:{ ja:'旧長井小学校第一校舎', en:'Former Nagai Elementary School First Building', zh:'旧长井小学第一校舍', ko:'구 나가이초등학교 제1교사' },
+      desc:{
+        ja:'昭和8年に建てられた木造校舎で、国登録有形文化財に登録されています。\n今は学びと交流の施設として、長井の思い出と未来をつなぐ場所です。',
+        en:'Built in 1933, this wooden school building is a registered tangible cultural property of Japan.\nToday it connects Nagai memories and the future as a place for learning and exchange.',
+        zh:'这座木造校舍建于1933年，并被登记为日本有形文化财。\n如今它作为学习与交流设施，连接着长井的记忆与未来。',
+        ko:'1933년에 지어진 목조 교사로, 일본 등록 유형문화재입니다.\n현재는 배움과 교류의 시설로 나가이의 추억과 미래를 이어 줍니다.'
+      }
+    },
+    {
+      id:'kozakurakan', lat:38.110963329145335, lon:140.03632275489852, radius:25, model:'./Index/3DModel/Kozakurakan.glb',
+      name:{ ja:'小桜館', en:'Kozakurakan', zh:'小樱馆', ko:'고자쿠라칸' },
+      desc:{
+        ja:'明治11年に旧西置賜郡役所として建てられた洋風建築です。\n現在は文教の杜の一角として、文化や芸術にふれる場になっています。',
+        en:'This Western-style building was built in 1878 as the former Nishi-Okitama district office.\nNow part of Bunkyo no Mori, it is a place to enjoy culture and the arts.',
+        zh:'这座西式建筑建于1878年，原为旧西置赐郡役所。\n如今它是“文教之杜”的一部分，是接触文化与艺术的场所。',
+        ko:'1878년에 구 니시오키타마 군청으로 세워진 서양식 건축물입니다.\n지금은 분쿄노모리의 일부로 문화와 예술을 만나는 장소입니다.'
+      }
+    },
+    {
+      id:'marudaiougiya', lat:38.11228246118919, lon:140.036198935986, radius:25, model:'./Index/3DModel/MarudaiOgiya.glb',
+      name:{ ja:'丸大扇屋', en:'Marudai Ogiya', zh:'丸大扇屋', ko:'마루다이 오기야' },
+      desc:{
+        ja:'最上川舟運で栄えた長井の豪商の屋敷です。\n店蔵や蔵座敷などが残り、商人のまちとしての歴史を今に伝えています。',
+        en:'This was the residence of a wealthy Nagai merchant family that prospered through Mogami River trade.\nIts storehouse and traditional rooms still tell the story of a merchant town.',
+        zh:'这里是因最上川舟运而繁荣的长井豪商宅邸。\n店藏和藏座敷等建筑仍保留着商人之町的历史气息。',
+        ko:'모가미강 배 운송으로 번성한 나가이 호상 가문의 저택입니다.\n점포 창고와 전통 방들이 남아 상인의 마을이었던 역사를 전합니다.'
+      }
+    },
+    {
+      id:'nagaisiyakusho', lat:38.1063333593554, lon:140.033892868012, radius:25, model:'./Index/3DModel/NagaiSiyakusho.glb',
+      name:{ ja:'長井市役所・長井駅', en:'Nagai City Hall and Nagai Station', zh:'长井市役所・长井站', ko:'나가이시청・나가이역' },
+      desc:{
+        ja:'市役所と山形鉄道フラワー長井線の長井駅が一体になった全国初の庁舎です。\n行政、交通、交流がつながる、長井の新しい玄関口です。',
+        en:'This is Japan’s first city hall building integrated with a railway station, Nagai Station on the Flower Nagai Line.\nIt is Nagai’s new gateway, linking public services, transport, and community exchange.',
+        zh:'这是日本首座与铁路车站一体化的市役所建筑，连接山形铁道花长井线长井站。\n行政、交通与交流在这里相连，是长井新的玄关。',
+        ko:'야마가타철도 플라워 나가이선 나가이역과 시청이 하나로 이어진 일본 최초의 청사입니다.\n행정, 교통, 교류가 연결되는 나가이의 새로운 관문입니다.'
+      }
+    },
+    {
+      id:'kougyoukoukou', lat:38.114426209437404, lon:140.03013087985815, radius:25, model:'./Index/3DModel/NagaiIndustryHighSchppl.glb',
+      name:{ ja:'長井工業高校', en:'Nagai Technical High School', zh:'长井工业高中', ko:'나가이공업고등학교' },
+      desc:{
+        ja:'機械、電子、福祉環境の学びを通して、ものづくりの力を育てる工業高校です。\n地域と連携し、産業を支える人材を送り出しています。',
+        en:'This technical high school develops manufacturing skills through machinery, electronics, welfare, and environment studies.\nWorking with the community, it nurtures people who support local industry.',
+        zh:'这所工业高中通过机械、电子、福祉环境等学习培养制造能力。\n学校与地区合作，培养支撑产业的人才。',
+        ko:'기계, 전자, 복지환경 학습을 통해 제조 기술을 키우는 공업고등학교입니다.\n지역과 협력하며 산업을 뒷받침하는 인재를 길러냅니다.'
+      }
+    },
+    {
+      id:'nagaikoukou', lat:38.097283861825424, lon:140.0380452392042, radius:25, model:'./Index/3DModel/NagaiHighSchool.glb',
+      name:{ ja:'長井高校', en:'Nagai High School', zh:'长井高中', ko:'나가이고등학교' },
+      desc:{
+        ja:'地域と大学、企業などをつなぐ探究型の学びを大切にする普通科高校です。\n自分の可能性を信じ、主体的に学ぶ姿勢を育てています。',
+        en:'This academic high school values inquiry-based learning connected with the community, universities, and companies.\nIt encourages students to believe in their potential and learn independently.',
+        zh:'这所普通科高中重视与地区、大学和企业相连的探究型学习。\n学校培养学生相信自己的可能性，并主动学习。',
+        ko:'지역, 대학, 기업과 연결되는 탐구형 학습을 중시하는 일반계 고등학교입니다.\n자신의 가능성을 믿고 주체적으로 배우는 자세를 키웁니다.'
+      }
+    },
+    {
+      id:'minaminagai', lat:38.09769549394771, lon:140.03458623775896, radius:25, model:'./Index/3DModel/MinamiNagai.glb',
+      name:{ ja:'南長井駅', en:'Minami-Nagai Station', zh:'南长井站', ko:'미나미나가이역' },
+      desc:{
+        ja:'山形鉄道フラワー長井線の無人駅です。\n赤湯と荒砥を結ぶローカル線の途中にあり、静かなまち歩きの出発点になります。',
+        en:'This unmanned station is on the Yamagata Railway Flower Nagai Line.\nLocated between Akayu and Arato, it is a quiet starting point for exploring the neighborhood.',
+        zh:'这是山形铁道花长井线上的无人车站。\n它位于赤汤与荒砥之间，是安静漫步街区的起点。',
+        ko:'야마가타철도 플라워 나가이선의 무인역입니다.\n아카유와 아라토를 잇는 로컬선 중간에 있어 조용한 마을 산책의 출발점이 됩니다.'
+      }
+    },
+    {
+      id:'kurunt', lat:38.10491876278905, lon:140.03466346205656, radius:25, model:'./Index/3DModel/Kurunt.glb',
+      name:{ ja:'くるんと', en:'KURUNTO', zh:'KURUNTO 交流设施', ko:'구룬토' },
+      desc:{
+        ja:'図書館、屋内遊戯場、子育て支援、カフェなどを備えた遊びと学びの交流施設です。\n繭をイメージした建物に、子どもから大人まで集まります。',
+        en:'KURUNTO is a play and learning exchange facility with a library, indoor play area, child-care support, and cafe.\nIts cocoon-inspired building welcomes everyone from children to adults.',
+        zh:'KURUNTO 是集图书馆、室内游乐场、育儿支援和咖啡馆于一体的游学交流设施。\n以蚕茧为灵感的建筑，欢迎儿童到大人共同聚集。',
+        ko:'구룬토는 도서관, 실내 놀이공간, 육아 지원, 카페를 갖춘 놀이와 배움의 교류 시설입니다.\n고치를 떠올리게 하는 건물에 어린이부터 어른까지 모입니다.'
+      }
+    },
+    {
+      id:'MyHome', lat:38.10011158734515, lon:140.0225346622888, radius:30, model:'./Index/3DModel/MyHome.glb',
+      name:{ ja:'MyHome', en:'MyHome', zh:'MyHome', ko:'MyHome' },
+      desc:{
+        ja:'今日のスタンプラリーを振り返る場所です。\n歩いた道、出会った景色、集めた情報を自分の物語として整理しましょう。',
+        en:'This is a place to look back on today’s stamp rally.\nReview the paths you walked, the scenes you found, and the information you collected as your own story.',
+        zh:'这里是回顾今天集章之旅的地点。\n把走过的路、遇见的风景和收集的信息，整理成自己的故事吧。',
+        ko:'오늘의 스탬프 랠리를 돌아보는 장소입니다.\n걸어온 길, 만난 풍경, 모은 정보를 나만의 이야기로 정리해 보세요.'
+      }
+    }
+  ];
+
+  const LANGUAGES = ['ja', 'en', 'zh', 'ko'];
+  const UI_TEXT = {
+    stampGet: {
+      ja: '【スタンプGET！】',
+      en: '[Stamp GET!]',
+      zh: '【获得印章！】',
+      ko: '[스탬프 획득!]'
+    },
+    arrived: {
+      ja: 'に到達しました！',
+      en: 'reached!',
+      zh: '已到达！',
+      ko: '에 도착했습니다!'
+    },
+    quiz: {
+      ja: 'ミニクイズ',
+      en: 'Mini Quiz',
+      zh: '小测验',
+      ko: '미니 퀴즈'
+    },
+    answer: {
+      ja: '答え',
+      en: 'Answer',
+      zh: '答案',
+      ko: '정답'
+    },
+    dataSaverOn: {
+      ja: '省通信 ON',
+      en: 'Data Saver ON',
+      zh: '省流量 ON',
+      ko: '데이터 절약 ON'
+    },
+    dataSaverOff: {
+      ja: '省通信 OFF',
+      en: 'Data Saver OFF',
+      zh: '省流量 OFF',
+      ko: '데이터 절약 OFF'
+    }
+  };
+
+  const QUIZZES = {
+    'tas-park': {
+      q: {
+        ja:'タスパークホテル長井から望める、長井市を流れる大きな川は何でしょう？',
+        en:'What major river can you see from Tas Park Hotel Nagai?',
+        zh:'从长井塔斯公园酒店可以眺望到流经长井市的哪条大河？',
+        ko:'타스 파크 호텔 나가이에서 볼 수 있는 나가이시의 큰 강은 무엇일까요?'
+      },
+      a:{ ja:'最上川', en:'The Mogami River', zh:'最上川', ko:'모가미강' }
+    },
+    'michinoeki': {
+      q: {
+        ja:'道の駅 川のみなと長井は、昔どんな交通・物流で栄えた町の記憶を伝えているでしょう？',
+        en:'What historic transport and trade route does this roadside station remember?',
+        zh:'川之港长井道之驿传承的是过去哪种交通与物流的历史？',
+        ko:'가와노미나토 나가이 휴게소는 예전 어떤 교통과 물류의 역사를 전하고 있을까요?'
+      },
+      a:{ ja:'最上川の舟運', en:'Mogami River boat transport', zh:'最上川舟运', ko:'모가미강 배 운송' }
+    },
+    'mnagai-es': {
+      q: {
+        ja:'旧長井小学校第一校舎は、何で造られた校舎でしょう？',
+        en:'What material was the former Nagai Elementary School First Building built with?',
+        zh:'旧长井小学第一校舍是用什么材料建成的？',
+        ko:'구 나가이초등학교 제1교사는 어떤 재료로 지어진 교사일까요?'
+      },
+      a:{ ja:'木造', en:'Wood', zh:'木材', ko:'목조' }
+    },
+    'kozakurakan': {
+      q: {
+        ja:'小桜館は、もともと何の役所として建てられたでしょう？',
+        en:'What government office was Kozakurakan originally built as?',
+        zh:'小樱馆最初是作为哪种役所建造的？',
+        ko:'고자쿠라칸은 원래 어떤 관청으로 지어졌을까요?'
+      },
+      a:{ ja:'旧西置賜郡役所', en:'The former Nishi-Okitama district office', zh:'旧西置赐郡役所', ko:'구 니시오키타마 군청' }
+    },
+    'marudaiougiya': {
+      q: {
+        ja:'丸大扇屋は、どんな商人の屋敷として知られているでしょう？',
+        en:'Marudai Ogiya is known as the residence of what kind of merchant family?',
+        zh:'丸大扇屋以什么样的商人宅邸而闻名？',
+        ko:'마루다이 오기야는 어떤 상인의 저택으로 알려져 있을까요?'
+      },
+      a:{ ja:'最上川舟運で栄えた豪商', en:'A wealthy merchant family that prospered through Mogami River trade', zh:'因最上川舟运而繁荣的豪商', ko:'모가미강 배 운송으로 번성한 호상' }
+    },
+    'nagaisiyakusho': {
+      q: {
+        ja:'長井市役所は、どの鉄道駅と一体になっているでしょう？',
+        en:'Which railway station is integrated with Nagai City Hall?',
+        zh:'长井市役所与哪个铁路车站一体化？',
+        ko:'나가이시청은 어떤 철도역과 하나로 이어져 있을까요?'
+      },
+      a:{ ja:'長井駅', en:'Nagai Station', zh:'长井站', ko:'나가이역' }
+    },
+    'kougyoukoukou': {
+      q: {
+        ja:'長井工業高校で育てている、地域産業を支える大切な力は何でしょう？',
+        en:'What important skill for local industry does Nagai Technical High School develop?',
+        zh:'长井工业高中培养的、支撑地区产业的重要能力是什么？',
+        ko:'나가이공업고등학교가 지역 산업을 위해 키우는 중요한 힘은 무엇일까요?'
+      },
+      a:{ ja:'ものづくりの力', en:'Manufacturing skills', zh:'制造能力', ko:'제조 기술' }
+    },
+    'nagaikoukou': {
+      q: {
+        ja:'長井高校が大切にしている、自分で問いを立てて学ぶ学習は何でしょう？',
+        en:'What kind of learning does Nagai High School value, where students ask their own questions?',
+        zh:'长井高中重视的、由学生自己提出问题并学习的学习方式是什么？',
+        ko:'나가이고등학교가 중시하는, 스스로 질문을 세워 배우는 학습은 무엇일까요?'
+      },
+      a:{ ja:'探究型の学び', en:'Inquiry-based learning', zh:'探究型学习', ko:'탐구형 학습' }
+    },
+    'minaminagai': {
+      q: {
+        ja:'南長井駅があるローカル線の名前は何でしょう？',
+        en:'What is the name of the local railway line that serves Minami-Nagai Station?',
+        zh:'南长井站所在的地方铁路线路叫什么？',
+        ko:'미나미나가이역이 있는 로컬선의 이름은 무엇일까요?'
+      },
+      a:{ ja:'山形鉄道フラワー長井線', en:'Yamagata Railway Flower Nagai Line', zh:'山形铁道花长井线', ko:'야마가타철도 플라워 나가이선' }
+    },
+    'kurunt': {
+      q: {
+        ja:'くるんとの建物は、長井の養蚕の歴史にちなみ、何の形をイメージしているでしょう？',
+        en:'Inspired by Nagai’s silk-raising history, what shape does KURUNTO’s building suggest?',
+        zh:'KURUNTO 的建筑灵感来自长井的养蚕历史，它让人联想到什么形状？',
+        ko:'구룬토의 건물은 나가이의 양잠 역사에서 착안해 어떤 형태를 떠올리게 할까요?'
+      },
+      a:{ ja:'繭', en:'A cocoon', zh:'蚕茧', ko:'고치' }
+    }
+  };
+  let currentLang = localStorage.getItem('display_lang') || 'ja';
+  if (!LANGUAGES.includes(currentLang)) currentLang = 'ja';
+  let isDataSaverMode = localStorage.getItem('data_saver_mode') === 'true';
+
+  let userStamps = JSON.parse(localStorage.getItem('user_stamps')) || {};
+  let polyline; // 軌跡を表示する線
+  let pathCoordinates = []; // 座標を保存する配列
+
+  function getLocalized(value, fallbackLang = 'ja') {
+    if (typeof value === 'string') return value;
+    return value[currentLang] || value[fallbackLang] || '';
+  }
+
+  function getPlaceName(place) {
+    return getLocalized(place.name);
+  }
+
+  function getPlaceDesc(place) {
+    return getLocalized(place.desc);
+  }
+
+  function getPlaceQuizText(place) {
+    const quiz = QUIZZES[place.id];
+    if (!quiz) return '';
+    return `\n\n${UI_TEXT.quiz[currentLang]}\nQ. ${getLocalized(quiz.q)}\n${UI_TEXT.answer[currentLang]}: ${getLocalized(quiz.a)}`;
+  }
+
+  function setLanguage(lang) {
+    if (!LANGUAGES.includes(lang)) return;
+    currentLang = lang;
+    localStorage.setItem('display_lang', currentLang);
+    updateLanguageButtons();
+    updateDataSaverUI();
+    updateStampUI();
+    refreshStoryPlates();
+  }
+
+  function updateLanguageButtons() {
+    document.querySelectorAll('.lang-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.lang === currentLang);
+    });
+  }
+
+  function refreshStoryPlates() {
+    const container = document.getElementById('plate-container');
+    if (!container) return;
+    container.innerHTML = '';
+    PLACES.forEach(p => {
+      if (userStamps[p.id]) showStoryPlate(p);
+    });
+  }
+
+  function toggleDataSaver() {
+    setDataSaverMode(!isDataSaverMode);
+  }
+
+  function setDataSaverMode(enabled) {
+    isDataSaverMode = enabled;
+    localStorage.setItem('data_saver_mode', String(isDataSaverMode));
+    updateDataSaverUI();
+  }
+
+  function updateDataSaverUI() {
+    document.body.classList.toggle('data-saver', isDataSaverMode);
+    const btn = document.getElementById('dataSaverBtn');
+    if (!btn) return;
+    btn.classList.toggle('active', isDataSaverMode);
+    btn.textContent = isDataSaverMode ? UI_TEXT.dataSaverOn[currentLang] : UI_TEXT.dataSaverOff[currentLang];
+  }
+
+  function getPositionLogInterval() {
+    return isDataSaverMode ? 60000 : 10000;
+  }
+
+  function getDeviceId() {
+    let id = localStorage.getItem('device_id');
+    if (!id) {
+      id = 'DEV-' + Math.random().toString(36).substring(2, 10);
+      localStorage.setItem('device_id', id);
+    }
+    return id;
+  }
+
+  const DEVICE_ID = getDeviceId();
+  const URL_ID = new URLSearchParams(location.search).get('id') || '';
+  const LOG_ENDPOINT = 'https://script.google.com/macros/s/AKfycbw_uhqYjG25qdhdrZ6zCZgjTCKPVypqmTcgKenXBtt4LSBCaoARHYSAYxtMEHijY1rSdA/exec';
+
+  function sendLog(payload) {
+    const data = Object.assign({ deviceId: DEVICE_ID, urlId: URL_ID, ts: Date.now() }, payload);
+    fetch(LOG_ENDPOINT, { method: 'POST', mode: 'no-cors', body: JSON.stringify(data) });
+  }
+
+  function updateStampUI() {
+    const list = document.getElementById('stampList');
+    list.innerHTML = '';
+    let count = 0;
+    PLACES.forEach(p => {
+      const isGot = userStamps[p.id];
+      if (isGot) count++;
+      const item = document.createElement('div');
+      item.className = `stamp-item ${isGot ? 'got' : ''}`;
+      item.textContent = `${isGot ? '✅' : '⚪'} ${getPlaceName(p)}`;
+      list.appendChild(item);
+    });
+    document.getElementById('stampCount').textContent = count;
+  }
+
+  function makeAFrameElement(tagName, attrs) {
+    const el = document.createElement(tagName);
+    Object.keys(attrs).forEach(key => el.setAttribute(key, attrs[key]));
+    return el;
+  }
+
+  function addOtterDrummer(parent) {
+    const performer = makeAFrameElement('a-entity', {
+      position: '0 -1.8 0.08',
+      scale: '0.46 0.46 0.46',
+      animation: 'property: position; dir: alternate; loop: true; to: 0 -1.72 0.08; dur: 520; easing: easeInOutSine'
+    });
+
+    const body = makeAFrameElement('a-sphere', {
+      position: '0 0 0',
+      radius: '0.72',
+      scale: '0.86 1.12 0.7',
+      color: '#9a5f32'
+    });
+    const belly = makeAFrameElement('a-sphere', {
+      position: '0 -0.1 0.28',
+      radius: '0.46',
+      scale: '0.9 1.1 0.35',
+      color: '#e8c49a'
+    });
+    const head = makeAFrameElement('a-sphere', {
+      position: '0 0.86 0',
+      radius: '0.52',
+      color: '#a96b3c'
+    });
+    const snout = makeAFrameElement('a-sphere', {
+      position: '0 0.76 0.4',
+      radius: '0.22',
+      scale: '1.4 0.8 0.85',
+      color: '#f0d3ad'
+    });
+    const nose = makeAFrameElement('a-sphere', {
+      position: '0 0.82 0.58',
+      radius: '0.07',
+      color: '#1f2937'
+    });
+    const leftEar = makeAFrameElement('a-sphere', {
+      position: '-0.35 1.22 0',
+      radius: '0.16',
+      color: '#8f552f'
+    });
+    const rightEar = makeAFrameElement('a-sphere', {
+      position: '0.35 1.22 0',
+      radius: '0.16',
+      color: '#8f552f'
+    });
+    const leftEye = makeAFrameElement('a-sphere', {
+      position: '-0.16 0.96 0.43',
+      radius: '0.055',
+      color: '#111827'
+    });
+    const rightEye = makeAFrameElement('a-sphere', {
+      position: '0.16 0.96 0.43',
+      radius: '0.055',
+      color: '#111827'
+    });
+
+    const drum = makeAFrameElement('a-cylinder', {
+      position: '0 -0.72 0.72',
+      radius: '0.5',
+      height: '0.5',
+      rotation: '90 0 0',
+      color: '#b91c1c',
+      animation: 'property: scale; dir: alternate; loop: true; to: 1.04 1.04 1.04; dur: 260; easing: easeInOutQuad'
+    });
+    const drumHead = makeAFrameElement('a-cylinder', {
+      position: '0 -0.72 1.0',
+      radius: '0.48',
+      height: '0.035',
+      rotation: '90 0 0',
+      color: '#fde68a'
+    });
+    const leftArm = makeAFrameElement('a-cylinder', {
+      position: '-0.46 0.1 0.42',
+      radius: '0.08',
+      height: '0.72',
+      rotation: '0 0 -36',
+      color: '#8f552f',
+      animation: 'property: rotation; dir: alternate; loop: true; to: 0 0 -8; dur: 260; easing: easeInOutQuad'
+    });
+    const rightArm = makeAFrameElement('a-cylinder', {
+      position: '0.46 0.1 0.42',
+      radius: '0.08',
+      height: '0.72',
+      rotation: '0 0 36',
+      color: '#8f552f',
+      animation: 'property: rotation; dir: alternate; loop: true; to: 0 0 8; dur: 260; delay: 130; easing: easeInOutQuad'
+    });
+    const leftStick = makeAFrameElement('a-cylinder', {
+      position: '-0.3 -0.12 0.78',
+      radius: '0.025',
+      height: '0.72',
+      rotation: '68 0 -34',
+      color: '#f5deb3',
+      animation: 'property: rotation; dir: alternate; loop: true; to: 48 0 -12; dur: 260; easing: easeInOutQuad'
+    });
+    const rightStick = makeAFrameElement('a-cylinder', {
+      position: '0.3 -0.12 0.78',
+      radius: '0.025',
+      height: '0.72',
+      rotation: '68 0 34',
+      color: '#f5deb3',
+      animation: 'property: rotation; dir: alternate; loop: true; to: 48 0 12; dur: 260; delay: 130; easing: easeInOutQuad'
+    });
+
+    [body, belly, head, snout, nose, leftEar, rightEar, leftEye, rightEye, drum, drumHead, leftArm, rightArm, leftStick, rightStick].forEach(el => performer.appendChild(el));
+    parent.appendChild(performer);
+  }
+
+  function showStoryPlate(place) {
+    const container = document.getElementById('plate-container');
+    if (document.getElementById(`plate-${place.id}`)) return;
+
+    const group = document.createElement('a-entity');
+    group.setAttribute('id', `plate-${place.id}`);
+    group.setAttribute('gps-entity-place', `latitude: ${place.lat}; longitude: ${place.lon};`);
+    group.setAttribute('look-at', '[gps-camera]');
+
+    const plate = document.createElement('a-plane');
+    plate.setAttribute('width', '4.4');
+    plate.setAttribute('height', QUIZZES[place.id] ? '3.4' : '2.9');
+    plate.setAttribute('material', 'color: #111827; opacity: 0.68; transparent: true; side: double');
+    plate.setAttribute('position', '0 0.6 0');
+
+    const title = document.createElement('a-text');
+    title.setAttribute('value', getPlaceName(place));
+    title.setAttribute('align', 'center');
+    title.setAttribute('width', '4');
+    title.setAttribute('color', '#ffe08a');
+    title.setAttribute('position', QUIZZES[place.id] ? '0 1.6 0.02' : '0 1.35 0.02');
+
+    const text = document.createElement('a-text');
+    text.setAttribute('value', `${getPlaceDesc(place)}${getPlaceQuizText(place)}`);
+    text.setAttribute('align', 'center');
+    text.setAttribute('width', '3.9');
+    text.setAttribute('wrap-count', currentLang === 'en' ? '28' : '23');
+    text.setAttribute('color', '#fff');
+    text.setAttribute('position', QUIZZES[place.id] ? '0 -1.5 0.02' : '0 -1.15 0.02');
+    text.setAttribute('animation', 'property: position; to: 0 0.05 0.02; dur: 4200; easing: easeOutCubic');
+
+    group.appendChild(plate);
+    group.appendChild(title);
+    group.appendChild(text);
+    if (place.id === 'michinoeki') addOtterDrummer(group);
+    container.appendChild(group);
+  }
+
+  function checkStamps(lat, lon) {
+    PLACES.forEach(p => {
+      if (userStamps[p.id]) return;
+      const dist = getDistance(lat, lon, p.lat, p.lon) * 1000;
+      if (dist <= p.radius) {
+        userStamps[p.id] = true;
+        localStorage.setItem('user_stamps', JSON.stringify(userStamps));
+        updateStampUI();
+        showStoryPlate(p);
+        alert(`${UI_TEXT.stampGet[currentLang]}\n${getPlaceName(p)} ${UI_TEXT.arrived[currentLang]}`);
+        sendLog({ event: 'stamp_get', poiId: p.id, poiName: getPlaceName(p), lat, lon, lang: currentLang });
+      }
+    });
+  }
+
+  let map, marker, prevPos = null, totalDistance = 0, lastLogTime = 0;
+
+  function initMap() {
+    map = new google.maps.Map(document.getElementById('map'), { 
+        center: { lat: 38.10, lng: 140.03 }, 
+        zoom: 15, 
+        disableDefaultUI: true 
+    });
+    marker = new google.maps.Marker({ map: map });
+
+    // 軌跡を描画するための線の初期設定
+    polyline = new google.maps.Polyline({
+        path: pathCoordinates,
+        geodesic: true,
+        strokeColor: '#FF0000', // 線の色（赤）
+        strokeOpacity: 1.0,
+        strokeWeight: 3, // 線の太さ
+        map: map
+    });
+
+    startGPS();
+  }
+
+  function startGPS() {
+    navigator.geolocation.watchPosition(pos => {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      document.getElementById('lat').textContent = lat.toFixed(5);
+      document.getElementById('lon').textContent = lon.toFixed(5);
+
+      const newPos = { lat: lat, lng: lon };
+      
+      // 1. 軌跡配列に新しい座標を追加
+      if (!isDataSaverMode && map && marker && polyline) {
+        pathCoordinates.push(newPos);
+      // 2. 線のデータを更新して地図に反映
+        polyline.setPath(pathCoordinates);
+
+        marker.setPosition(newPos);
+        map.setCenter(newPos);
+      }
+
+      checkStamps(lat, lon);
+
+      if (prevPos) {
+        const d = getDistance(prevPos.lat, prevPos.lng, lat, lon);
+        if (d > 0.002) {
+          totalDistance += d;
+          document.getElementById('dist').textContent = totalDistance.toFixed(3);
+        }
+      }
+      prevPos = { lat, lng: lon };
+
+      if (Date.now() - lastLogTime > getPositionLogInterval()) {
+        sendLog({ event: 'position', lat, lon, distance_km: totalDistance, dataSaver: isDataSaverMode });
+        lastLogTime = Date.now();
+      }
+    }, err => console.warn(err), { enableHighAccuracy: true });
+  }
+
+  function getDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function createARModels() {
+    PLACES.forEach(p => {
+      if(userStamps[p.id]) showStoryPlate(p);
+    });
+  }
+
+  window.addEventListener('load', () => {
+    document.getElementById('id').textContent = DEVICE_ID;
+    document.getElementById('urlId').textContent = URL_ID || '-';
+    updateLanguageButtons();
+    updateDataSaverUI();
+    updateStampUI();
+    createARModels();
+    window.addEventListener('click', () => {
+      const v = document.querySelector('video');
+      if(v) v.play();
+    }, {once: true});
+  });
+  </script>
+</body>
+</html>
